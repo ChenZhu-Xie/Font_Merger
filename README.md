@@ -1,6 +1,6 @@
 # Font_Merger
 
-将 🀄️:🦜 ( = 2:1 的 等宽) 双字体 并集，生成 中+英 双语 单字体
+将 🀄️:🦜 ( = 2:1 的 等宽) 双字体 并集（纯英字体所有字符，覆盖中文字体中的对应部分），生成 中+英 双语 单字体
 
 - Vscode 效果:
 <img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
