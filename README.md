@@ -3,10 +3,10 @@
 将 🀄️:🦜 ( = 2:1 的 等宽) 双字体 并集，生成 中+英 双语 单字体
 
 - Vscode 效果:
-<img width="2442" height="1538" alt="image" src="https://github.com/user-attachments/assets/fcc89898-a2df-4936-b238-2726e244f963" />
+<img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
 
 - Sublime 效果:
-<img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
+<img width="2442" height="1538" alt="image" src="https://github.com/user-attachments/assets/fcc89898-a2df-4936-b238-2726e244f963" />
 
 - SilverBullet 效果：
 <img width="2700" height="1811" alt="image" src="https://github.com/user-attachments/assets/d542753d-c39a-48a2-a116-387369416237" />
