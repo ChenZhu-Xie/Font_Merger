@@ -2,6 +2,12 @@
 
 将 🀄️:🦜 ( = 2:1 的 等宽) 双字体 并集，生成 中+英 双语 单字体
 
+- Vscode 效果:
+<img width="2442" height="1538" alt="image" src="https://github.com/user-attachments/assets/fcc89898-a2df-4936-b238-2726e244f963" />
+
+- Sublime 效果:
+<img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
+
 ## 项目简介
 
 **Font_Merger** 是一个 Python 工具，用于自动生成中英文（等宽）混排字体家族。
