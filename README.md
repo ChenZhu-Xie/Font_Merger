@@ -4,7 +4,8 @@
 
 ## 项目简介
 
-**Font_Merger** 是一个 Python 工具，用于自动生成中英文等宽混排字体家族。  
+**Font_Merger** 是一个 Python 工具，用于自动生成中英文（等宽）混排字体家族。
+
 作为示例，它将 Inconsolata 的 1 等宽 西文字符 与 LXGW Bright 的 2 等宽 中文字符，
 拼合成一个统一的 英:中 = 1:2 等宽字体，并支持多字重和样式（Regular、Medium、Bold、Italic 等）。  
 
