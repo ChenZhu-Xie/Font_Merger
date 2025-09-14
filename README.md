@@ -56,7 +56,7 @@ merged_fonts/
 ```
 
 - VScode: 管理-设置，搜索 Font Family
- - 粘贴 'Inconsolata-LXGWMono', 'Source Han Mono SC', Consolas, 'Courier New', monospace
+  - 粘贴 'Inconsolata-LXGWMono', 'Source Han Mono SC', Consolas, 'Courier New', monospace
 
 ### 5. 依赖
 ```
