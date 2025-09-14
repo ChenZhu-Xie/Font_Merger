@@ -8,6 +8,9 @@
 - Sublime 效果:
 <img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
 
+- SilverBullet 效果：
+<img width="2700" height="1811" alt="image" src="https://github.com/user-attachments/assets/d542753d-c39a-48a2-a116-387369416237" />
+
 ## 项目简介
 
 **Font_Merger** 是一个 Python 工具，用于自动生成中英文（等宽）混排字体家族。
