@@ -17,7 +17,7 @@
 
 作为示例，它将 Inconsolata 的 1 等宽西文字符与 LXGW Bright 的 2 等宽中文字符，拼合成一个统一的英:中 = 1:2 等宽字体，并支持多字重和样式（Regular、Medium、Bold、Italic 等）。
 
-- 英文字体中的字符优先，中文字体补充其余字符，避免重复覆盖。
+- 合并一款西文字体和一款中文字体时，会自动让西文字体覆盖重复字符；输入顺序不影响结果。
 - 支持 TTF、OTF、TTC 和 OTC，也可以依次合并多个字体。
 - 支持微软雅黑等 `.ttc` 字体，无须预先拆分。
 - 自动修改字体内部名称，避免与原字体冲突。
@@ -62,7 +62,7 @@ Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，�
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
-第一个字体优先，第二个字体负责补充缺少的字符。还可以在后面继续添加其他字体。
+程序会自动识别常见的“西文 + 中文”组合：西文字体提供英文等重复字符，中文字体补充其余字符。合并其他字体或三个以上字体时，则按输入顺序决定优先级。
 
 #### 合并微软雅黑
 
@@ -79,6 +79,30 @@ Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，�
 ```
 
 > 路径中有 `#0` 时，请保留两边的英文双引号。
+
+#### 选择中文字体的显示效果
+
+一份字体只能安全使用一套 TrueType hinting。默认优先保持西文字体的小字号显示效果；如果更在意中文，可以加上：
+
+```powershell
+--hinting-source cjk
+```
+
+也可以选择 `latin`、`none` 或输入字体序号，例如 `--hinting-source 2`。
+
+#### 选择可变字体的字重
+
+先查看字体包含的 Thin、Regular、Medium、Bold 等实例：
+
+```powershell
+./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
+```
+
+再按名称选择。未指定时，程序会优先匹配另一款字体的字重；没有可匹配字重时默认使用 Regular：
+
+```powershell
+./font-merger-windows-x64.exe "consolab.ttf" "NotoSansSC-VF.ttf" --instance Bold --family "Consolas Noto Sans SC" -o "Consolas-Noto-Bold.ttf"
+```
 
 ### 4. 输出结果
 

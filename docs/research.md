@@ -21,9 +21,9 @@
 | [mrx7014/FontMerger](https://github.com/mrx7014/FontMerger) | 否 | 是 | 否 | 调用外部 `pyftmerge`；手工 UPM 缩放没有覆盖所有相关 OpenType 坐标表；明确不处理可变/彩色字体 |
 | [luzi82/mono-merge](https://github.com/luzi82/mono-merge) | 是（CJK 输入 + index） | 否（固定 Latin/CJK） | 否 | 合并流程删除 GPOS/GSUB，复杂文字 shaping 与定位信息会丢失 |
 | [nowar-fonts/Warcraft-Font-Merger](https://github.com/nowar-fonts/Warcraft-Font-Merger) | 未作为主要输入接口 | 是 | 发布包是 | C++/otfcc 工具链成熟且快，但面向魔兽字体补全，分发包还捆绑字库和多个程序 |
-| 本项目 2.0 | 是（按文件签名识别） | 是（前者优先） | Release 是 | 静态轮廓字体；暂不合并彩色字体，CFF2 可变字体需先导出静态实例 |
+| 本项目 2.1 | 是（按文件签名识别） | 是（可配置优先级） | Release 是 | 静态轮廓字体；暂不合并彩色字体和 CFF2 可变字体 |
 
-## 2.0 的取舍
+## 2.1 的取舍
 
 - 使用 `fontTools.ttLib.TTFont(..., fontNumber=N)` 直接读取 TTC/OTC face，不需要先拆文件。
 - 所有输入在同一次 merge 中处理；后续字体只保留前序字体没有的 Unicode 字符，优先级明确且不会靠不稳定的重复 cmap 行为决定。
@@ -33,6 +33,14 @@
 - 输出后重新打开，核对 Unicode 覆盖、UPM 和静态化状态，再原子替换目标文件。
 - GitHub Actions 用 PyInstaller 生成包含 Python 与 fontTools 的单文件程序；最终用户不安装 Python 或 pip。
 
+### Hinting
+
+TrueType 的 `cvt/fpgm/prep` 是整份字体共享的程序，来自不同字体的 glyph 指令不能直接各自搭配原来的全局程序。fontTools 因此只保留第一个输入的 hinting，并移除其他输入的 glyph hint。
+
+2.1 先独立决定每个字符的来源，再让用户用 `--hinting-source` 选择西文、CJK、指定输入或全部去除。被选中的字体在内部最先合并，从而保留其全局程序和所提供字符的 glyph hint；这不会改变字符覆盖优先级。
+
+评估过用 `ttfautohint` 对成品统一重新 hint。它可以作为无系统依赖的二进制随 Release 打包，但当前版本主要使用 Latin writing system；未覆盖的 CJK 字符只能走缺少 CJK blue zones 的 fallback。对中英混合字体默认启用可能改变汉字设计效果，而且会显著增加构建体积与处理时间。因此 2.1 不默认重新 hint，后续只考虑作为明确标注的实验选项。
+
 “任意字体都能无损合并”在 OpenType 中并不是可兑现的承诺。彩色字体涉及 COLR/CPAL、CBDT/CBLC、
-SVG 或 sbix 的额外 glyph 引用；CFF2 可变字体也需要完整的 variation 实例化支持。2.0 对这些输入明确
+SVG 或 sbix 的额外 glyph 引用；CFF2 可变字体也需要完整的 variation 实例化支持。2.1 对这些输入明确
 报错，避免生成表面可安装、实际缺字或 shaping 损坏的字体。

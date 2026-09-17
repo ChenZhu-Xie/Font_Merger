@@ -28,7 +28,7 @@ from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
@@ -49,7 +49,11 @@ class FontSource:
 
     @property
     def label(self) -> str:
-        suffix = f"#{self.face_index}" if self.face_explicit or is_collection(self.path) else ""
+        suffix = (
+            f"#{self.face_index}"
+            if self.face_explicit or is_collection(self.path)
+            else ""
+        )
         return f"{self.path}{suffix}"
 
 
@@ -58,6 +62,47 @@ class FaceInfo:
     index: int
     family: str
     style: str
+    axes: tuple["AxisInfo", ...] = ()
+    instances: tuple["InstanceInfo", ...] = ()
+
+
+@dataclass(frozen=True)
+class AxisInfo:
+    tag: str
+    name: str
+    minimum: float
+    default: float
+    maximum: float
+
+
+@dataclass(frozen=True)
+class InstanceInfo:
+    name: str
+    coordinates: tuple[tuple[str, float], ...]
+
+    @property
+    def coordinate_map(self) -> dict[str, float]:
+        return dict(self.coordinates)
+
+
+@dataclass(frozen=True)
+class SourceInfo:
+    source: FontSource
+    family: str
+    style: str
+    unicodes: frozenset[int]
+    upm: int
+    variable: bool
+    instances: tuple[InstanceInfo, ...]
+
+
+@dataclass(frozen=True)
+class StyleMetadata:
+    weight: int
+    width: int
+    fs_selection: int
+    mac_style: int
+    italic_angle: float
 
 
 def is_collection(path: Path) -> bool:
@@ -89,14 +134,32 @@ def collection_faces(path: Path) -> list[FaceInfo]:
         raise FontMergerError(f"字体文件不存在：{path}")
     if not is_collection(path):
         with TTFont(path, lazy=True) as font:
-            return [FaceInfo(0, best_name(font, "family"), best_name(font, "style"))]
+            axes, instances = variable_details(font)
+            return [
+                FaceInfo(
+                    0,
+                    best_name(font, "family"),
+                    best_name(font, "style"),
+                    axes,
+                    instances,
+                )
+            ]
 
     collection = TTCollection(path, lazy=True)
     try:
-        return [
-            FaceInfo(index, best_name(font, "family"), best_name(font, "style"))
-            for index, font in enumerate(collection.fonts)
-        ]
+        faces = []
+        for index, font in enumerate(collection.fonts):
+            axes, instances = variable_details(font)
+            faces.append(
+                FaceInfo(
+                    index,
+                    best_name(font, "family"),
+                    best_name(font, "style"),
+                    axes,
+                    instances,
+                )
+            )
+        return faces
     finally:
         collection.close()
 
@@ -106,14 +169,42 @@ def best_name(font: TTFont, kind: str) -> str:
     if name is None:
         return "Unknown"
     if kind == "family":
-        return name.getBestFamilyName() or name.getDebugName(1) or "Unknown"
-    return name.getBestSubFamilyName() or name.getDebugName(2) or "Regular"
+        return name.getDebugName(16) or name.getDebugName(1) or "Unknown"
+    return name.getDebugName(17) or name.getDebugName(2) or "Regular"
+
+
+def variable_details(
+    font: TTFont,
+) -> tuple[tuple[AxisInfo, ...], tuple[InstanceInfo, ...]]:
+    if "fvar" not in font:
+        return (), ()
+    name = font["name"]
+    axes = tuple(
+        AxisInfo(
+            axis.axisTag,
+            name.getDebugName(axis.axisNameID) or axis.axisTag,
+            float(axis.minValue),
+            float(axis.defaultValue),
+            float(axis.maxValue),
+        )
+        for axis in font["fvar"].axes
+    )
+    instances = tuple(
+        InstanceInfo(
+            name.getDebugName(instance.subfamilyNameID) or f"Instance {index + 1}",
+            tuple((tag, float(value)) for tag, value in instance.coordinates.items()),
+        )
+        for index, instance in enumerate(font["fvar"].instances)
+    )
+    return axes, instances
 
 
 def open_source(source: FontSource) -> TTFont:
     collection = is_collection(source.path)
     if source.face_explicit and not collection and source.face_index != 0:
-        raise FontMergerError(f"{source.path} 不是字体集合，不能选择 face #{source.face_index}")
+        raise FontMergerError(
+            f"{source.path} 不是字体集合，不能选择 face #{source.face_index}"
+        )
 
     if collection:
         faces = collection_faces(source.path)
@@ -137,6 +228,208 @@ def open_source(source: FontSource) -> TTFont:
     return font
 
 
+def inspect_source(source: FontSource) -> SourceInfo:
+    font = open_source(source)
+    try:
+        _axes, instances = variable_details(font)
+        return SourceInfo(
+            source,
+            best_name(font, "family"),
+            best_name(font, "style"),
+            frozenset((font.getBestCmap() or {}).keys()),
+            font["head"].unitsPerEm,
+            "fvar" in font,
+            instances,
+        )
+    finally:
+        font.close()
+
+
+def cjk_character_count(unicodes: Iterable[int]) -> int:
+    ranges = (
+        (0x1100, 0x11FF),
+        (0x2E80, 0x33FF),
+        (0x3400, 0x4DBF),
+        (0x4E00, 0x9FFF),
+        (0xAC00, 0xD7AF),
+        (0xF900, 0xFAFF),
+        (0x20000, 0x323AF),
+    )
+    return sum(
+        any(start <= codepoint <= end for start, end in ranges)
+        for codepoint in unicodes
+    )
+
+
+def detect_latin_cjk_pair(infos: Sequence[SourceInfo]) -> tuple[int, int] | None:
+    if len(infos) != 2:
+        return None
+    cjk_counts = [cjk_character_count(info.unicodes) for info in infos]
+    cjk_index = 0 if cjk_counts[0] > cjk_counts[1] else 1
+    latin_index = 1 - cjk_index
+    ascii_letters = set(range(ord("A"), ord("Z") + 1)) | set(
+        range(ord("a"), ord("z") + 1)
+    )
+    if (
+        cjk_counts[cjk_index] >= 256
+        and cjk_counts[latin_index] <= 16
+        and ascii_letters.issubset(infos[latin_index].unicodes)
+    ):
+        return latin_index, cjk_index
+    return None
+
+
+def resolve_priority(
+    value: str,
+    infos: Sequence[SourceInfo],
+    pair: tuple[int, int] | None,
+) -> list[int]:
+    normalized = value.strip().casefold()
+    if normalized == "auto":
+        if pair is not None:
+            latin, cjk = pair
+            LOG.info(
+                "检测到西文 + CJK：%s 覆盖重叠字符，%s 补充其余字符",
+                infos[latin].family,
+                infos[cjk].family,
+            )
+            return [latin, cjk]
+        LOG.info("未检测到明确的西文 + CJK 双字体组合，按输入顺序处理")
+        return list(range(len(infos)))
+    if normalized == "input":
+        return list(range(len(infos)))
+    try:
+        order = [int(item.strip()) - 1 for item in value.split(",")]
+    except ValueError as exc:
+        raise FontMergerError(
+            "--priority 应为 auto、input 或 1,2,3 形式的字体序号"
+        ) from exc
+    if len(order) != len(infos) or set(order) != set(range(len(infos))):
+        raise FontMergerError("--priority 必须恰好包含每个输入字体的序号一次")
+    return order
+
+
+def resolve_hinting_source(
+    value: str,
+    infos: Sequence[SourceInfo],
+    priority: Sequence[int],
+    pair: tuple[int, int] | None,
+) -> int | None:
+    normalized = value.strip().casefold()
+    if normalized == "none":
+        return None
+    if normalized in {"auto", "first"}:
+        return priority[0]
+    if normalized == "last":
+        return priority[-1]
+    if normalized in {"latin", "western"}:
+        if pair is None:
+            raise FontMergerError(
+                "无法可靠识别西文字体；请用 --hinting-source N 指定输入序号"
+            )
+        return pair[0]
+    if normalized in {"cjk", "chinese"}:
+        if pair is None:
+            raise FontMergerError(
+                "无法可靠识别 CJK 字体；请用 --hinting-source N 指定输入序号"
+            )
+        return pair[1]
+    try:
+        index = int(value) - 1
+    except ValueError as exc:
+        raise FontMergerError(
+            "--hinting-source 应为 auto、latin、cjk、none 或输入字体序号"
+        ) from exc
+    if index not in range(len(infos)):
+        raise FontMergerError(f"--hinting-source 字体序号应在 1 到 {len(infos)} 之间")
+    return index
+
+
+STYLE_WEIGHTS = {
+    "thin": 100,
+    "hairline": 100,
+    "extralight": 200,
+    "ultralight": 200,
+    "light": 300,
+    "demilight": 350,
+    "semilight": 350,
+    "regular": 400,
+    "normal": 400,
+    "book": 400,
+    "medium": 500,
+    "semibold": 600,
+    "demibold": 600,
+    "bold": 700,
+    "extrabold": 800,
+    "ultrabold": 800,
+    "black": 900,
+    "heavy": 900,
+}
+
+
+def normalized_style(value: str) -> str:
+    return (
+        re.sub(r"[^a-z0-9]", "", value.casefold())
+        .replace("italic", "")
+        .replace("oblique", "")
+        or "regular"
+    )
+
+
+def style_weight(value: str) -> int | None:
+    return STYLE_WEIGHTS.get(normalized_style(value))
+
+
+def style_for_weight(weight: float) -> str:
+    choices = (
+        (100, "Thin"),
+        (200, "ExtraLight"),
+        (300, "Light"),
+        (350, "DemiLight"),
+        (400, "Regular"),
+        (500, "Medium"),
+        (600, "SemiBold"),
+        (700, "Bold"),
+        (800, "ExtraBold"),
+        (900, "Black"),
+    )
+    return min(choices, key=lambda item: abs(item[0] - weight))[1]
+
+
+def find_instance(info: SourceInfo, name: str) -> InstanceInfo | None:
+    wanted = re.sub(r"[^a-z0-9]", "", name.casefold())
+    for instance in info.instances:
+        if re.sub(r"[^a-z0-9]", "", instance.name.casefold()) == wanted:
+            return instance
+    weight = style_weight(name)
+    if weight is not None:
+        for instance in info.instances:
+            if instance.coordinate_map.get("wght") == weight:
+                return instance
+    return None
+
+
+def choose_instance_name(
+    infos: Sequence[SourceInfo],
+    priority: Sequence[int],
+    requested: str | None,
+    output_style: str | None,
+) -> tuple[str | None, bool]:
+    if requested:
+        return requested, True
+    if output_style:
+        return output_style, False
+    for index in priority:
+        if not infos[index].variable and infos[index].style:
+            return infos[index].style, False
+    variable_infos = [info for info in infos if info.variable]
+    if variable_infos and all(
+        find_instance(info, "Regular") for info in variable_infos
+    ):
+        return "Regular", False
+    return None, False
+
+
 def parse_axis(values: Iterable[str]) -> dict[str, float]:
     axes: dict[str, float] = {}
     for value in values:
@@ -153,16 +446,23 @@ def parse_axis(values: Iterable[str]) -> dict[str, float]:
     return axes
 
 
-def instantiate_if_variable(font: TTFont, requested_axes: dict[str, float]) -> set[str]:
+def instantiate_if_variable(
+    font: TTFont,
+    requested_axes: dict[str, float],
+    instance_coordinates: dict[str, float] | None = None,
+) -> set[str]:
     if "fvar" not in font:
         return set()
     if "CFF2" in font:
-        raise FontMergerError("当前 fontTools 不能可靠地静态化 CFF2 可变字体；请先导出静态实例")
+        raise FontMergerError(
+            "当前 fontTools 不能可靠地静态化 CFF2 可变字体；请先导出静态实例"
+        )
 
     available = {axis.axisTag: axis for axis in font["fvar"].axes}
     used = set(requested_axes).intersection(available)
+    instance_coordinates = instance_coordinates or {}
     limits = {
-        tag: requested_axes.get(tag, axis.defaultValue)
+        tag: requested_axes.get(tag, instance_coordinates.get(tag, axis.defaultValue))
         for tag, axis in available.items()
     }
     LOG.info(
@@ -265,7 +565,9 @@ def normalize_upm(font: TTFont, target_upm: int) -> None:
     current = font["head"].unitsPerEm
     if current == target_upm:
         return
-    LOG.info("缩放 UPM：%d -> %d（并移除已失效的 TrueType hinting）", current, target_upm)
+    LOG.info(
+        "缩放 UPM：%d -> %d（并移除已失效的 TrueType hinting）", current, target_upm
+    )
     scale_upem(font, target_upm)
     remove_hinting(font)
 
@@ -333,14 +635,54 @@ def postscript_name(family: str, style: str) -> str:
     return (value or "MergedFont-Regular")[:63]
 
 
-def set_font_names(font: TTFont, family: str, style: str) -> None:
+def style_flags(style: str, weight: int) -> tuple[bool, bool, bool]:
+    lowered = style.casefold()
+    italic = "italic" in lowered or "oblique" in lowered
+    oblique = "oblique" in lowered
+    bold = weight >= 700 or "bold" in lowered
+    return bold, italic, oblique
+
+
+def legacy_names(family: str, style: str, weight: int) -> tuple[str, str]:
+    bold, italic, _oblique = style_flags(style, weight)
+    weight_name = re.sub(r"(?i)\b(italic|oblique)\b", "", style).strip(" -")
+    is_regular_weight = normalized_style(style) in {"regular", "normal", "book"}
+    if (is_regular_weight or bold) and normalized_style(style) in {
+        "regular",
+        "normal",
+        "book",
+        "bold",
+    }:
+        if bold and italic:
+            return family, "Bold Italic"
+        if bold:
+            return family, "Bold"
+        if italic:
+            return family, "Italic"
+        return family, "Regular"
+    legacy_family = (
+        family if not weight_name or is_regular_weight else f"{family} {weight_name}"
+    )
+    return legacy_family, "Italic" if italic else "Regular"
+
+
+def set_font_names(font: TTFont, family: str, style: str, weight: int) -> None:
     if "name" not in font:
         return
     name = font["name"]
     full = family if style.casefold() == "regular" else f"{family} {style}"
     ps_name = postscript_name(family, style)
     unique = f"{VERSION};{ps_name}"
-    values = {1: family, 2: style, 3: unique, 4: full, 6: ps_name, 16: family, 17: style}
+    legacy_family, legacy_style = legacy_names(family, style, weight)
+    values = {
+        1: legacy_family,
+        2: legacy_style,
+        3: unique,
+        4: full,
+        6: ps_name,
+        16: family,
+        17: style,
+    }
 
     for name_id, value in values.items():
         name.removeNames(nameID=name_id)
@@ -351,6 +693,44 @@ def set_font_names(font: TTFont, family: str, style: str) -> None:
         except UnicodeEncodeError:
             continue
         name.setName(value, name_id, 1, 0, 0)
+
+
+def read_style_metadata(font: TTFont) -> StyleMetadata:
+    os2 = font["OS/2"]
+    return StyleMetadata(
+        int(os2.usWeightClass),
+        int(os2.usWidthClass),
+        int(os2.fsSelection),
+        int(font["head"].macStyle),
+        float(font["post"].italicAngle) if "post" in font else 0.0,
+    )
+
+
+def apply_style_metadata(
+    font: TTFont, metadata: StyleMetadata, style: str, weight: int
+) -> None:
+    bold, italic, oblique = style_flags(style, weight)
+    if "OS/2" in font:
+        os2 = font["OS/2"]
+        os2.usWeightClass = max(1, min(1000, int(weight)))
+        os2.usWidthClass = metadata.width
+        os2.fsSelection = metadata.fs_selection & ~(
+            (1 << 0) | (1 << 5) | (1 << 6) | (1 << 9)
+        )
+        if italic:
+            os2.fsSelection |= 1 << 0
+        if bold:
+            os2.fsSelection |= 1 << 5
+        if not bold and not italic:
+            os2.fsSelection |= 1 << 6
+        if oblique and os2.version >= 4:
+            os2.fsSelection |= 1 << 9
+    if "head" in font:
+        font["head"].macStyle = (
+            (metadata.mac_style & ~0x03) | (1 if bold else 0) | (2 if italic else 0)
+        )
+    if "post" in font:
+        font["post"].italicAngle = metadata.italic_angle if italic else 0.0
 
 
 def refresh_metadata(font: TTFont) -> None:
@@ -382,13 +762,17 @@ def _save_prepared(font: TTFont, path: Path) -> None:
     font.close()
 
 
-def validate_output(path: Path, expected_unicodes: set[int], target_upm: int) -> tuple[int, int]:
+def validate_output(
+    path: Path, expected_unicodes: set[int], target_upm: int
+) -> tuple[int, int]:
     with TTFont(path, lazy=False) as font:
         actual = set((font.getBestCmap() or {}).keys())
         missing = expected_unicodes - actual
         if missing:
             examples = ", ".join(f"U+{cp:04X}" for cp in sorted(missing)[:10])
-            raise FontMergerError(f"输出自检失败：缺少 {len(missing)} 个字符（{examples}）")
+            raise FontMergerError(
+                f"输出自检失败：缺少 {len(missing)} 个字符（{examples}）"
+            )
         if font["head"].unitsPerEm != target_upm:
             raise FontMergerError("输出自检失败：UPM 不一致")
         if "fvar" in font:
@@ -403,6 +787,9 @@ def merge_fonts(
     style: str | None = None,
     axes: dict[str, float] | None = None,
     curve_error: float = 1.0,
+    priority: str = "auto",
+    hinting_source: str = "auto",
+    instance: str | None = None,
 ) -> tuple[int, int]:
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
@@ -410,11 +797,99 @@ def merge_fonts(
         raise FontMergerError("--curve-error 必须大于 0")
 
     axes = axes or {}
-    used_axes: set[str] = set()
+    infos = [inspect_source(source) for source in sources]
+    pair = detect_latin_cjk_pair(infos)
+    priority_order = resolve_priority(priority, infos, pair)
+    hint_index = resolve_hinting_source(hinting_source, infos, priority_order, pair)
+
+    selected_unicodes: list[set[int]] = [set() for _ in infos]
     claimed: set[int] = set()
     expected: set[int] = set()
-    names: list[tuple[str, str]] = []
-    target_upm: int | None = None
+    for index in priority_order:
+        selected = set(infos[index].unicodes) - claimed
+        selected_unicodes[index] = selected
+        claimed.update(infos[index].unicodes)
+        expected.update(selected)
+
+    contributing = [index for index in priority_order if selected_unicodes[index]]
+    if len(contributing) < 2:
+        raise FontMergerError("除优先字体外，没有输入字体能补充新字符")
+    if hint_index is not None and hint_index not in contributing:
+        if hinting_source.casefold() == "auto":
+            hint_index = contributing[0]
+        else:
+            raise FontMergerError("指定的 hinting 来源没有为输出字体提供字符")
+
+    chosen_instance_name, explicit_instance = choose_instance_name(
+        infos,
+        priority_order,
+        instance,
+        style,
+    )
+    instance_coordinates: list[dict[str, float]] = [{} for _ in infos]
+    matched_instance_names: list[str | None] = [None for _ in infos]
+    if chosen_instance_name:
+        for index, info in enumerate(infos):
+            if not info.variable:
+                continue
+            matched = find_instance(info, chosen_instance_name)
+            if matched is None:
+                if explicit_instance:
+                    raise FontMergerError(
+                        f"{info.source.label} 没有名为 {chosen_instance_name!r} 的可变字体实例"
+                    )
+                matched = find_instance(info, "Regular")
+                if matched is None:
+                    LOG.warning(
+                        "%s 没有 %s 或 Regular 实例，使用其默认轴坐标",
+                        info.source.label,
+                        chosen_instance_name,
+                    )
+                    continue
+                LOG.warning(
+                    "%s 没有 %s 实例，改用 Regular",
+                    info.source.label,
+                    chosen_instance_name,
+                )
+            instance_coordinates[index] = matched.coordinate_map
+            matched_instance_names[index] = matched.name
+            LOG.info(
+                "选择 %s 的 %s 实例：%s",
+                info.family,
+                matched.name,
+                ", ".join(f"{tag}={value:g}" for tag, value in matched.coordinates),
+            )
+
+    if hint_index is None:
+        internal_order = contributing
+        target_upm = infos[priority_order[0]].upm
+        LOG.info("Hinting：全部移除")
+    else:
+        internal_order = [
+            hint_index,
+            *[index for index in contributing if index != hint_index],
+        ]
+        target_upm = infos[hint_index].upm
+        LOG.info("Hinting 来源：#%d %s", hint_index + 1, infos[hint_index].family)
+
+    if style:
+        chosen_style = style
+    elif "wght" in axes:
+        chosen_style = style_for_weight(axes["wght"])
+    elif instance:
+        chosen_style = next((name for name in matched_instance_names if name), instance)
+    elif not infos[priority_order[0]].variable:
+        chosen_style = infos[priority_order[0]].style
+    elif chosen_instance_name and any(matched_instance_names):
+        chosen_style = next(name for name in matched_instance_names if name)
+    else:
+        chosen_style = infos[priority_order[0]].style
+
+    chosen_family = family or default_family(
+        [(infos[index].family, infos[index].style) for index in priority_order]
+    )
+    used_axes: set[str] = set()
+    style_metadata: StyleMetadata | None = None
 
     output = output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -423,34 +898,34 @@ def merge_fonts(
         temp_dir = Path(temp_name)
         prepared_paths: list[Path] = []
 
-        for index, source in enumerate(sources):
-            LOG.info("读取 [%d/%d] %s", index + 1, len(sources), source.label)
+        for position, index in enumerate(internal_order):
+            source = sources[index]
+            LOG.info("读取 [%d/%d] %s", position + 1, len(internal_order), source.label)
             font = open_source(source)
             try:
                 reject_color_font(font, source.label)
-                names.append((best_name(font, "family"), best_name(font, "style")))
-                used_axes.update(instantiate_if_variable(font, axes))
+                used_axes.update(
+                    instantiate_if_variable(font, axes, instance_coordinates[index])
+                )
+                selected = selected_unicodes[index]
+                LOG.info(
+                    "采用 %d 个字符，忽略 %d 个由更高优先级字体提供的字符",
+                    len(selected),
+                    len(infos[index].unicodes) - len(selected),
+                )
+                subset_to_unicodes(font, selected)
 
-                cmap = font.getBestCmap() or {}
-                available = set(cmap)
-                selected = available if index == 0 else available - claimed
-                expected.update(selected)
-                claimed.update(available)
-
-                if index > 0:
-                    if not selected:
-                        LOG.info("跳过 %s：没有可补充的 Unicode 字符", source.label)
-                        font.close()
-                        continue
-                    LOG.info("采用 %d 个新字符，忽略 %d 个已由前序字体提供的字符", len(selected), len(available) - len(selected))
-                    subset_to_unicodes(font, selected)
-
-                if target_upm is None:
-                    target_upm = font["head"].unitsPerEm
                 if "CFF " in font or "CFF2" in font:
                     LOG.info("将 PostScript 三次曲线轮廓转换为 TrueType 二次曲线")
                     convert_cff_to_glyf(font, curve_error)
                 normalize_upm(font, target_upm)
+                if hint_index is None or index != hint_index:
+                    remove_hinting(font)
+                elif not HINT_TABLES.intersection(font.keys()):
+                    LOG.warning("指定的 hinting 来源不包含可保留的 TrueType hinting")
+
+                if index == priority_order[0]:
+                    style_metadata = read_style_metadata(font)
                 ensure_vertical_metrics(font)
                 strip_invalidated_tables(font)
 
@@ -463,20 +938,22 @@ def merge_fonts(
 
         unknown_axes = set(axes) - used_axes
         if unknown_axes:
-            raise FontMergerError(f"输入字体均不包含这些轴：{', '.join(sorted(unknown_axes))}")
-        if len(prepared_paths) < 2:
-            raise FontMergerError("除首字体外，没有输入字体能补充新字符")
-        assert target_upm is not None
-
-        LOG.info("合并 %d 个字体（前者优先）", len(prepared_paths))
+            raise FontMergerError(
+                f"输入字体均不包含这些轴：{', '.join(sorted(unknown_axes))}"
+            )
+        LOG.info("合并 %d 个已完成字符归属分配的字体", len(prepared_paths))
         options = MergeOptions(drop_tables=list(INVALIDATED_TABLES))
         merged = Merger(options=options).merge([str(path) for path in prepared_paths])
         merged.recalcTimestamp = False
         merged.recalcBBoxes = True
 
-        chosen_family = family or default_family(names)
-        chosen_style = style or names[0][1]
-        set_font_names(merged, chosen_family, chosen_style)
+        assert style_metadata is not None
+        requested_weight = axes.get("wght")
+        if requested_weight is None:
+            requested_weight = style_weight(chosen_style)
+        chosen_weight = int(round(requested_weight or style_metadata.weight))
+        set_font_names(merged, chosen_family, chosen_style, chosen_weight)
+        apply_style_metadata(merged, style_metadata, chosen_style, chosen_weight)
         refresh_metadata(merged)
 
         temporary_output = output.with_name(f".{output.name}.font-merger.tmp")
@@ -496,16 +973,64 @@ def merge_fonts(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="font-merger",
-        description="按输入顺序合并 TTF/OTF/TTC/OTC；相同字符由前面的字体提供。",
+        description=(
+            "合并 TTF/OTF/TTC/OTC。双字体的西文 + CJK 组合会自动让西文字体"
+            "覆盖重复字符；其他组合默认按输入顺序。"
+        ),
     )
-    parser.add_argument("fonts", nargs="*", metavar="FONT", help="字体路径；集合 face 写作 'path.ttc#0'")
-    parser.add_argument("-o", "--output", type=Path, default=Path("merged.ttf"), help="输出 TTF（默认 merged.ttf）")
+    parser.add_argument(
+        "fonts", nargs="*", metavar="FONT", help="字体路径；集合 face 写作 'path.ttc#0'"
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("merged.ttf"),
+        help="输出 TTF（默认 merged.ttf）",
+    )
     parser.add_argument("--family", help="输出字体家族名")
-    parser.add_argument("--style", help="输出样式名；默认沿用第一个字体")
-    parser.add_argument("--axis", action="append", default=[], metavar="TAG=VALUE", help="可变字体轴坐标，可重复")
-    parser.add_argument("--curve-error", type=float, default=1.0, metavar="UNITS", help="OTF 曲线转换最大误差（默认 1.0）")
-    parser.add_argument("--list", dest="list_font", type=Path, metavar="FONT", help="列出 TTC/OTC 中的 face 后退出")
-    parser.add_argument("-v", "--verbose", action="store_true", help="显示 fontTools 详细日志")
+    parser.add_argument("--style", help="输出样式名；默认自动匹配输入字体")
+    parser.add_argument(
+        "--instance",
+        metavar="NAME",
+        help="选择可变字体命名实例，如 Regular、Medium、Bold",
+    )
+    parser.add_argument(
+        "--axis",
+        action="append",
+        default=[],
+        metavar="TAG=VALUE",
+        help="可变字体轴坐标，可重复",
+    )
+    parser.add_argument(
+        "--priority",
+        default="auto",
+        metavar="auto|input|ORDER",
+        help="字符来源优先级；默认 auto，也可用 input 或 2,1,3",
+    )
+    parser.add_argument(
+        "--hinting-source",
+        default="auto",
+        metavar="auto|latin|cjk|none|N",
+        help="TrueType hinting 来源；默认跟随最高字符优先级字体",
+    )
+    parser.add_argument(
+        "--curve-error",
+        type=float,
+        default=1.0,
+        metavar="UNITS",
+        help="OTF 曲线转换最大误差（默认 1.0）",
+    )
+    parser.add_argument(
+        "--list",
+        dest="list_font",
+        type=Path,
+        metavar="FONT",
+        help="列出 TTC/OTC face 或可变字体实例后退出",
+    )
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="显示 fontTools 详细日志"
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return parser
 
@@ -525,6 +1050,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.list_font:
             for face in collection_faces(args.list_font.expanduser().resolve()):
                 print(f"#{face.index}\t{face.family}\t{face.style}")
+                for axis in face.axes:
+                    print(
+                        f"  axis {axis.tag}\t{axis.minimum:g}..{axis.maximum:g}"
+                        f" (default {axis.default:g})\t{axis.name}"
+                    )
+                for instance in face.instances:
+                    coordinates = ", ".join(
+                        f"{tag}={value:g}" for tag, value in instance.coordinates
+                    )
+                    print(f"  instance\t{instance.name}\t{coordinates}")
             return 0
         if not args.fonts:
             parser.print_help()
@@ -539,8 +1074,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             style=args.style,
             axes=axes,
             curve_error=args.curve_error,
+            priority=args.priority,
+            hinting_source=args.hinting_source,
+            instance=args.instance,
         )
-        print(f"完成：{args.output.resolve()}（{characters} 个 Unicode 字符，{glyphs} 个 glyph）")
+        print(
+            f"完成：{args.output.resolve()}（{characters} 个 Unicode 字符，{glyphs} 个 glyph）"
+        )
         return 0
     except FontMergerError as exc:
         parser.error(str(exc))
