@@ -336,7 +336,9 @@ def resolve_hinting_source(
     normalized = value.strip().casefold()
     if normalized == "none":
         return None
-    if normalized in {"auto", "first"}:
+    if normalized == "auto":
+        return pair[1] if pair is not None else priority[0]
+    if normalized == "first":
         return priority[0]
     if normalized == "last":
         return priority[-1]
@@ -1270,7 +1272,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--hinting-source",
         default="auto",
         metavar="auto|latin|cjk|none|N",
-        help="TrueType hinting 来源；默认跟随最高字符优先级字体",
+        help="TrueType hinting 来源；中西文双字体默认保持 CJK，其余跟随最高优先级",
     )
     parser.add_argument(
         "--weights",

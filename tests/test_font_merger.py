@@ -15,6 +15,7 @@ from Font_Merger import (
     merge_fonts,
     parse_source,
     plan_weights,
+    resolve_hinting_source,
     variable_details,
 )
 
@@ -173,6 +174,10 @@ class FontMergerTests(TestCase):
                     merged["hmtx"][merged_name][0],
                     latin["hmtx"][latin_name][0],
                 )
+
+    def test_auto_hinting_prefers_cjk_for_a_latin_cjk_pair(self):
+        infos = self._weight_infos()
+        self.assertEqual(resolve_hinting_source("auto", infos, [0, 1], (0, 1)), 1)
 
     def test_weight_and_style_metadata_are_synchronized(self):
         with TemporaryDirectory() as directory:
