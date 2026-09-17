@@ -34,6 +34,9 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Build one-file executable
         run: python -m PyInstaller --noconfirm --clean --onefile --name "${{ matrix.artifact }}" --collect-submodules fontTools.ttLib.tables --collect-submodules fontTools.encodings Font_Merger.py
+      - name: Build Windows GUI executable
+        if: runner.os == 'Windows'
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "font-merger-gui-windows-x64" --collect-submodules fontTools.ttLib.tables --collect-submodules fontTools.encodings Font_Merger_GUI.py
       - name: Smoke test executable (Windows)
         if: runner.os == 'Windows'
         run: "& 'dist/${{ matrix.artifact }}.exe' --version"
@@ -44,6 +47,13 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}*
+          if-no-files-found: error
+      - name: Upload Windows GUI executable
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: font-merger-gui-windows-x64
+          path: dist/font-merger-gui-windows-x64.exe
           if-no-files-found: error
 
   release:

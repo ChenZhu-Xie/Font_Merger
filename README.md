@@ -22,6 +22,7 @@
 - 支持微软雅黑等 `.ttc` 字体，无须预先拆分。
 - 自动修改字体内部名称，避免与原字体冲突。
 - 提供 Windows、Linux、macOS 单文件程序，无须安装 Python。
+- 默认自动生成字体中可用的多个字重，也可以只选择一个字重。
 
 ---
 
@@ -41,6 +42,7 @@
 在 [Releases](https://github.com/ChenZhu-Xie/Font_Merger/releases) 下载适合你系统的文件：
 
 - Windows：`font-merger-windows-x64.exe`
+- Windows 图形界面：`font-merger-gui-windows-x64.exe`
 - Linux：`font-merger-linux-x64`
 - macOS：`font-merger-macos`
 
@@ -56,7 +58,9 @@ LXGWBright-Medium.ttf
 
 ### 3. 合并字体
 
-Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，选择“在此处打开 PowerShell 窗口”，然后运行：
+Windows 用户推荐双击 `font-merger-gui-windows-x64.exe`。添加字体后，可以直观选择字形来源、Hinting 来源和字重规则，再点击“开始合并”。
+
+也可以使用命令行。Windows 用户在文件夹空白处按住 Shift 并单击鼠标右键，选择“在此处打开 PowerShell 窗口”，然后运行：
 
 ```powershell
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
@@ -90,7 +94,7 @@ Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，�
 
 也可以选择 `latin`、`none` 或输入字体序号，例如 `--hinting-source 2`。
 
-#### 选择可变字体的字重
+#### 自动生成多个字重
 
 先查看字体包含的 Thin、Regular、Medium、Bold 等实例：
 
@@ -98,21 +102,29 @@ Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，�
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
 
-再按名称选择。未指定时，程序会优先匹配另一款字体的字重；没有可匹配字重时默认使用 Regular：
+不指定字重时，程序会采用字重较丰富的一侧，自动生成多个字体；另一侧缺少对应字重时会选择最接近的一款：
+
+```powershell
+./font-merger-windows-x64.exe "consola.ttf" "NotoSansSC-VF.ttf" --family "Consolas Noto Sans SC" -o "Consolas-Noto.ttf"
+```
+
+如果只需要一个字重，再明确指定：
 
 ```powershell
 ./font-merger-windows-x64.exe "consolab.ttf" "NotoSansSC-VF.ttf" --instance Bold --family "Consolas Noto Sans SC" -o "Consolas-Noto-Bold.ttf"
 ```
 
+需要更多控制时，可以用 `--weights latin`、`cjk`、`union`、`intersection` 或 `300,400,700`。加上 `--weight-match exact` 可以禁止使用相近字重替代。
+
 ### 4. 输出结果
 
-合并完成后，会在指定位置生成新的 `.ttf` 字体，例如：
+合并完成后，会在指定位置生成新的 `.ttf` 字体。自动生成多个字重时，文件名会带上样式，例如：
 
 ```text
-Inconsolata-LXGWMono-Medium.ttf
+Consolas-Noto-Thin.ttf
+Consolas-Noto-Regular.ttf
+Consolas-Noto-Bold.ttf
 ```
-
-要制作完整的字体家族，可以分别合并 Regular、Medium、Bold、Italic 等对应样式，并为它们设置相同的 `--family`。
 
 ### 5. 安装字体
 

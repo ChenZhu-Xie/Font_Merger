@@ -6,10 +6,15 @@ from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
 
 from Font_Merger import (
+    AxisInfo,
     FontSource,
+    InstanceInfo,
+    SourceInfo,
     collection_faces,
+    merge_font_family,
     merge_fonts,
     parse_source,
+    plan_weights,
     variable_details,
 )
 
@@ -20,6 +25,37 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    @staticmethod
+    def _weight_infos():
+        latin = SourceInfo(
+            FontSource(LATIN),
+            "Latin",
+            "Regular",
+            frozenset(range(128)),
+            1000,
+            False,
+            (),
+            (),
+            400,
+        )
+        axis = AxisInfo("wght", "Weight", 100, 100, 900)
+        instances = tuple(
+            InstanceInfo(name, (("wght", weight),))
+            for name, weight in (("Thin", 100), ("Regular", 400), ("Bold", 700))
+        )
+        cjk = SourceInfo(
+            FontSource(CJK),
+            "CJK",
+            "Thin",
+            frozenset(range(0x4E00, 0x5000)),
+            1000,
+            True,
+            (axis,),
+            instances,
+            100,
+        )
+        return latin, cjk
+
     def test_parse_plain_font(self):
         source = parse_source(str(LATIN))
         self.assertEqual(source.path, LATIN.resolve())
@@ -54,6 +90,33 @@ class FontMergerTests(TestCase):
         self.assertEqual(axes[0].maximum, 900)
         self.assertEqual(instances[0].name, "Regular")
         self.assertEqual(instances[0].coordinate_map, {"wght": 400})
+
+    def test_automatic_weight_plan_uses_richer_source(self):
+        infos = self._weight_infos()
+        plan = plan_weights(infos, [0, 1], (0, 1), "auto")
+        self.assertEqual([weight for weight, _mapping in plan], [100, 400, 700])
+        self.assertEqual(plan[0][1], (None, 100))
+
+    def test_weight_plan_modes_remain_independent(self):
+        infos = self._weight_infos()
+        intersection = plan_weights(
+            infos, [0, 1], (0, 1), "intersection", match="exact"
+        )
+        self.assertEqual([weight for weight, _mapping in intersection], [400])
+        with self.assertRaisesRegex(Exception, "无法精确生成字重 100"):
+            plan_weights(infos, [0, 1], (0, 1), "100", match="exact")
+
+    def test_static_inputs_keep_single_output_by_default(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "family.ttf"
+            results = merge_font_family(
+                [FontSource(LATIN), FontSource(CJK)],
+                output,
+                family="Single Weight Family",
+            )
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].path, output.resolve())
+            self.assertTrue(output.is_file())
 
     def test_ttc_face_selection_and_merge(self):
         with TemporaryDirectory() as directory:

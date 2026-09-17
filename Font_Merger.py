@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Merge OpenType fonts with deterministic fallback priority.
+"""Merge OpenType font families with independent glyph, hinting and weight rules.
 
-The first input wins for duplicate Unicode code points. Later inputs only fill
-missing characters. TTF, OTF, TTC and OTC inputs are accepted; collection
-faces are selected with ``path#INDEX``.
+TTF, OTF, TTC and OTC inputs are accepted; collection faces are selected with
+``path#INDEX``. Clear Latin/CJK pairs use the Latin source for duplicate code
+points by default, independent of input order.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
@@ -93,7 +93,9 @@ class SourceInfo:
     unicodes: frozenset[int]
     upm: int
     variable: bool
+    axes: tuple[AxisInfo, ...]
     instances: tuple[InstanceInfo, ...]
+    weight: int
 
 
 @dataclass(frozen=True)
@@ -103,6 +105,15 @@ class StyleMetadata:
     fs_selection: int
     mac_style: int
     italic_angle: float
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    path: Path
+    style: str
+    weight: int
+    characters: int
+    glyphs: int
 
 
 def is_collection(path: Path) -> bool:
@@ -231,7 +242,12 @@ def open_source(source: FontSource) -> TTFont:
 def inspect_source(source: FontSource) -> SourceInfo:
     font = open_source(source)
     try:
-        _axes, instances = variable_details(font)
+        axes, instances = variable_details(font)
+        weight = (
+            int(font["OS/2"].usWeightClass)
+            if "OS/2" in font
+            else style_weight(best_name(font, "style")) or 400
+        )
         return SourceInfo(
             source,
             best_name(font, "family"),
@@ -239,7 +255,9 @@ def inspect_source(source: FontSource) -> SourceInfo:
             frozenset((font.getBestCmap() or {}).keys()),
             font["head"].unitsPerEm,
             "fvar" in font,
+            axes,
             instances,
+            weight,
         )
     finally:
         font.close()
@@ -407,6 +425,130 @@ def find_instance(info: SourceInfo, name: str) -> InstanceInfo | None:
             if instance.coordinate_map.get("wght") == weight:
                 return instance
     return None
+
+
+def weight_axis(info: SourceInfo) -> AxisInfo | None:
+    return next((axis for axis in info.axes if axis.tag == "wght"), None)
+
+
+def available_weights(info: SourceInfo) -> tuple[int, ...]:
+    """Return useful output-weight anchors exposed by one input face."""
+    weights = {
+        int(round(instance.coordinate_map["wght"]))
+        for instance in info.instances
+        if "wght" in instance.coordinate_map
+    }
+    axis = weight_axis(info)
+    if axis is not None:
+        weights.add(int(round(axis.default)))
+    if not weights:
+        weights.add(info.weight)
+    return tuple(sorted(weights))
+
+
+def matched_weight(info: SourceInfo, target: int) -> tuple[int, int]:
+    """Return the realizable weight and its distance from the target."""
+    axis = weight_axis(info)
+    if axis is not None:
+        value = int(round(min(max(target, axis.minimum), axis.maximum)))
+    else:
+        value = info.weight
+    return value, abs(value - target)
+
+
+def parse_weight_list(value: str) -> list[int] | None:
+    normalized = value.strip().casefold()
+    if normalized in {"auto", "latin", "cjk", "union", "intersection"}:
+        return None
+    try:
+        weights = [int(item.strip()) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise FontMergerError(
+            "--weights 应为 auto、latin、cjk、union、intersection 或逗号分隔的数字"
+        ) from exc
+    if not weights or any(weight < 1 or weight > 1000 for weight in weights):
+        raise FontMergerError("字重数值应在 1 到 1000 之间")
+    return sorted(set(weights))
+
+
+def plan_weights(
+    infos: Sequence[SourceInfo],
+    priority: Sequence[int],
+    pair: tuple[int, int] | None,
+    mode: str,
+    match: str = "nearest",
+    max_gap: int | None = None,
+) -> list[tuple[int, tuple[int | None, ...]]]:
+    """Plan output weights independently from glyph and hinting priority."""
+    if match not in {"nearest", "exact"}:
+        raise FontMergerError("--weight-match 应为 nearest 或 exact")
+    if max_gap is not None and max_gap < 0:
+        raise FontMergerError("--max-weight-gap 不能小于 0")
+
+    explicit = parse_weight_list(mode)
+    normalized = mode.strip().casefold()
+    inventories = [available_weights(info) for info in infos]
+    if explicit is not None:
+        targets = explicit
+    elif normalized == "union":
+        targets = sorted({weight for values in inventories for weight in values})
+    elif normalized == "intersection":
+        candidates = sorted({weight for values in inventories for weight in values})
+        targets = [
+            weight
+            for weight in candidates
+            if all(matched_weight(info, weight)[1] == 0 for info in infos)
+        ]
+        if not targets:
+            raise FontMergerError("输入字体没有可精确对应的共同字重")
+    elif normalized in {"latin", "cjk"}:
+        if pair is None:
+            raise FontMergerError(
+                f"无法可靠识别 {normalized} 字体；请改用 union、intersection 或数字列表"
+            )
+        index = pair[0 if normalized == "latin" else 1]
+        targets = list(inventories[index])
+    elif normalized == "auto":
+        # Prefer the source exposing the richest family. A tie follows glyph priority.
+        index = max(
+            priority, key=lambda item: (len(inventories[item]), -priority.index(item))
+        )
+        targets = list(inventories[index])
+        LOG.info(
+            "自动字重来源：#%d %s（%s）",
+            index + 1,
+            infos[index].family,
+            ", ".join(map(str, targets)),
+        )
+    else:
+        raise FontMergerError(f"未知字重模式：{mode}")
+
+    plan: list[tuple[int, tuple[int | None, ...]]] = []
+    for target in targets:
+        source_weights: list[int | None] = []
+        for info in infos:
+            selected, gap = matched_weight(info, target)
+            if match == "exact" and gap:
+                raise FontMergerError(
+                    f"{info.family} 无法精确生成字重 {target}；"
+                    "可改用 --weight-match nearest"
+                )
+            if max_gap is not None and gap > max_gap:
+                raise FontMergerError(
+                    f"{info.family} 与目标字重 {target} 相差 {gap}，"
+                    f"超过 --max-weight-gap {max_gap}"
+                )
+            if gap:
+                LOG.warning(
+                    "%s 没有字重 %d，将使用最接近的 %d（相差 %d）",
+                    info.family,
+                    target,
+                    selected,
+                    gap,
+                )
+            source_weights.append(selected if weight_axis(info) is not None else None)
+        plan.append((target, tuple(source_weights)))
+    return plan
 
 
 def choose_instance_name(
@@ -790,6 +932,9 @@ def merge_fonts(
     priority: str = "auto",
     hinting_source: str = "auto",
     instance: str | None = None,
+    source_weights: Sequence[int | None] | None = None,
+    inspected_sources: Sequence[SourceInfo] | None = None,
+    output_weight: int | None = None,
 ) -> tuple[int, int]:
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
@@ -797,7 +942,11 @@ def merge_fonts(
         raise FontMergerError("--curve-error 必须大于 0")
 
     axes = axes or {}
-    infos = [inspect_source(source) for source in sources]
+    infos = list(inspected_sources or (inspect_source(source) for source in sources))
+    if len(infos) != len(sources):
+        raise FontMergerError("字体检查结果与输入数量不一致")
+    if source_weights is not None and len(source_weights) != len(sources):
+        raise FontMergerError("每字体字重映射与输入数量不一致")
     pair = detect_latin_cjk_pair(infos)
     priority_order = resolve_priority(priority, infos, pair)
     hint_index = resolve_hinting_source(hinting_source, infos, priority_order, pair)
@@ -904,8 +1053,13 @@ def merge_fonts(
             font = open_source(source)
             try:
                 reject_color_font(font, source.label)
+                source_axes = dict(axes)
+                if source_weights is not None and source_weights[index] is not None:
+                    source_axes["wght"] = float(source_weights[index])
                 used_axes.update(
-                    instantiate_if_variable(font, axes, instance_coordinates[index])
+                    instantiate_if_variable(
+                        font, source_axes, instance_coordinates[index]
+                    )
                 )
                 selected = selected_unicodes[index]
                 LOG.info(
@@ -948,7 +1102,9 @@ def merge_fonts(
         merged.recalcBBoxes = True
 
         assert style_metadata is not None
-        requested_weight = axes.get("wght")
+        requested_weight = output_weight
+        if requested_weight is None:
+            requested_weight = axes.get("wght")
         if requested_weight is None:
             requested_weight = style_weight(chosen_style)
         chosen_weight = int(round(requested_weight or style_metadata.weight))
@@ -970,6 +1126,108 @@ def merge_fonts(
     return counts
 
 
+def style_for_output_weight(weight: int) -> str:
+    style = style_for_weight(weight)
+    if style_weight(style) == weight:
+        return style
+    return f"Weight {weight}"
+
+
+def weighted_output_path(output: Path, style: str, multiple: bool) -> Path:
+    if not multiple:
+        return output
+    suffix = output.suffix or ".ttf"
+    stem = output.stem if output.suffix else output.name
+    safe_style = re.sub(r"[^A-Za-z0-9._-]+", "-", style).strip("-")
+    return output.with_name(f"{stem}-{safe_style}{suffix}")
+
+
+def merge_font_family(
+    sources: Sequence[FontSource],
+    output: Path,
+    family: str | None = None,
+    style: str | None = None,
+    axes: dict[str, float] | None = None,
+    curve_error: float = 1.0,
+    priority: str = "auto",
+    hinting_source: str = "auto",
+    instance: str | None = None,
+    weights: str = "auto",
+    weight_match: str = "nearest",
+    max_weight_gap: int | None = None,
+) -> list[MergeResult]:
+    """Merge one explicit style, or automatically build a static font family."""
+    axes = dict(axes or {})
+    explicit_style = style is not None or instance is not None or "wght" in axes
+    if explicit_style:
+        if weights.strip().casefold() != "auto":
+            raise FontMergerError(
+                "--style、--instance 或 --axis wght 已指定单一字重，不能同时使用 --weights"
+            )
+        characters, glyphs = merge_fonts(
+            sources,
+            output,
+            family=family,
+            style=style,
+            axes=axes,
+            curve_error=curve_error,
+            priority=priority,
+            hinting_source=hinting_source,
+            instance=instance,
+        )
+        selected_style = style or instance or style_for_weight(axes.get("wght", 400))
+        selected_weight = int(
+            round(axes.get("wght", style_weight(selected_style) or 400))
+        )
+        return [
+            MergeResult(
+                output.resolve(), selected_style, selected_weight, characters, glyphs
+            )
+        ]
+
+    infos = [inspect_source(source) for source in sources]
+    pair = detect_latin_cjk_pair(infos)
+    priority_order = resolve_priority(priority, infos, pair)
+    plan = plan_weights(
+        infos,
+        priority_order,
+        pair,
+        weights,
+        match=weight_match,
+        max_gap=max_weight_gap,
+    )
+    multiple = len(plan) > 1
+    results: list[MergeResult] = []
+    for position, (weight, source_weights) in enumerate(plan, start=1):
+        output_style = style_for_output_weight(weight)
+        target = weighted_output_path(output, output_style, multiple)
+        LOG.info(
+            "生成字重 [%d/%d] %s (%d)：%s",
+            position,
+            len(plan),
+            output_style,
+            weight,
+            target,
+        )
+        characters, glyphs = merge_fonts(
+            sources,
+            target,
+            family=family,
+            style=output_style,
+            axes=axes,
+            curve_error=curve_error,
+            priority=priority,
+            hinting_source=hinting_source,
+            source_weights=source_weights,
+            inspected_sources=infos,
+            output_weight=weight,
+        )
+        results.append(
+            MergeResult(target.resolve(), output_style, weight, characters, glyphs)
+        )
+    return results
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="font-merger",
@@ -986,14 +1244,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=Path("merged.ttf"),
-        help="输出 TTF（默认 merged.ttf）",
+        help="输出文件名基准；多个字重会自动添加样式名（默认 merged.ttf）",
     )
     parser.add_argument("--family", help="输出字体家族名")
     parser.add_argument("--style", help="输出样式名；默认自动匹配输入字体")
     parser.add_argument(
         "--instance",
         metavar="NAME",
-        help="选择可变字体命名实例，如 Regular、Medium、Bold",
+        help="只生成一个可变字体实例，如 Regular、Medium、Bold",
     )
     parser.add_argument(
         "--axis",
@@ -1013,6 +1271,24 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         metavar="auto|latin|cjk|none|N",
         help="TrueType hinting 来源；默认跟随最高字符优先级字体",
+    )
+    parser.add_argument(
+        "--weights",
+        default="auto",
+        metavar="auto|latin|cjk|union|intersection|LIST",
+        help="自动生成哪些字重；也可写 300,400,700（默认 auto）",
+    )
+    parser.add_argument(
+        "--weight-match",
+        choices=("nearest", "exact"),
+        default="nearest",
+        help="某输入缺少目标字重时使用最近字重或报错（默认 nearest）",
+    )
+    parser.add_argument(
+        "--max-weight-gap",
+        type=int,
+        metavar="N",
+        help="最近字重允许的最大差值；默认不限制",
     )
     parser.add_argument(
         "--curve-error",
@@ -1067,7 +1343,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         sources = [parse_source(value) for value in args.fonts]
         axes = parse_axis(args.axis)
-        characters, glyphs = merge_fonts(
+        results = merge_font_family(
             sources,
             args.output,
             family=args.family,
@@ -1077,10 +1353,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             priority=args.priority,
             hinting_source=args.hinting_source,
             instance=args.instance,
+            weights=args.weights,
+            weight_match=args.weight_match,
+            max_weight_gap=args.max_weight_gap,
         )
-        print(
-            f"完成：{args.output.resolve()}（{characters} 个 Unicode 字符，{glyphs} 个 glyph）"
-        )
+        for result in results:
+            print(
+                f"完成：{result.path}（{result.style}，{result.characters} 个 Unicode 字符，"
+                f"{result.glyphs} 个 glyph）"
+            )
         return 0
     except FontMergerError as exc:
         parser.error(str(exc))
