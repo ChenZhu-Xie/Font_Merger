@@ -1,71 +1,141 @@
-# Font Merger
+# Font_Merger
 
-按优先级把 TTF、OTF、TTC 或 OTC 中的字体合成一个静态 TTF。第一个字体优先，后续字体只补齐它尚未覆盖的 Unicode 字符。
+将 🀄️:🦜（= 2:1 的等宽）双字体并集（纯英字体所有字符，覆盖中文字体中的对应部分），生成中 + 英双语单字体。
 
-这意味着微软雅黑 `msyh.ttc` 可以直接和普通 `.ttf` 合并，无需先拆 TTC，也不要求最终用户安装 Python。
+- Vscode 效果：
+<img width="2375" height="1485" alt="image" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
 
-## 直接使用（推荐）
+- Sublime 效果：
+<img width="2442" height="1538" alt="image" src="https://github.com/user-attachments/assets/fcc89898-a2df-4936-b238-2726e244f963" />
 
-从 GitHub Releases 下载对应平台的单文件程序。Windows 示例：
+- SilverBullet 效果：
+<img width="2700" height="1811" alt="image" src="https://github.com/user-attachments/assets/d542753d-c39a-48a2-a116-387369416237" />
 
-```powershell
-# 先查看 TTC 中有哪些 face
-font-merger-windows-x64.exe --list "C:\Windows\Fonts\msyh.ttc"
+## 项目简介
 
-# #0 是 Microsoft YaHei；路径必须加引号，避免 PowerShell 把 # 当作注释
-font-merger-windows-x64.exe `
-  "Inconsolata-Medium.ttf" `
-  "C:\Windows\Fonts\msyh.ttc#0" `
-  --family "Inconsolata YaHei" `
-  --style Medium `
-  -o "Inconsolata-YaHei-Medium.ttf"
-```
+**Font_Merger** 是一个字体合并工具，用于生成中英文（等宽）混排字体家族。
 
-`msyh.ttc` 在当前 Windows 中通常包含：
+作为示例，它将 Inconsolata 的 1 等宽西文字符与 LXGW Bright 的 2 等宽中文字符，拼合成一个统一的英:中 = 1:2 等宽字体，并支持多字重和样式（Regular、Medium、Bold、Italic 等）。
+
+- 英文字体中的字符优先，中文字体补充其余字符，避免重复覆盖。
+- 支持 TTF、OTF、TTC 和 OTC，也可以依次合并多个字体。
+- 支持微软雅黑等 `.ttc` 字体，无须预先拆分。
+- 自动修改字体内部名称，避免与原字体冲突。
+- 提供 Windows、Linux、macOS 单文件程序，无须安装 Python。
+
+---
+
+## 功能亮点
+
+1. **中英文混排优化**：作为示例，英文使用 Inconsolata，中文使用 LXGW Bright，保持视觉一致的 2:1 等宽比例。
+2. **多字重支持**：可生成 Regular、Medium、Bold、Italic 等不同字重和样式的字体。
+3. **字体集合支持**：可以直接选择 TTC/OTC 中的字体，例如微软雅黑。
+4. **开箱即用**：下载程序即可合并，生成的字体可直接安装使用。
+
+---
+
+## 使用方法
+
+### 1. 下载程序
+
+在 [Releases](https://github.com/ChenZhu-Xie/Font_Merger/releases) 下载适合你系统的文件：
+
+- Windows：`font-merger-windows-x64.exe`
+- Linux：`font-merger-linux-x64`
+- macOS：`font-merger-macos`
+
+### 2. 准备字体
+
+将要合并的字体放在程序旁边。例如：
 
 ```text
-#0  Microsoft YaHei     Regular
-#1  Microsoft YaHei UI  Regular
+font-merger-windows-x64.exe
+Inconsolata-Medium.ttf
+LXGWBright-Medium.ttf
 ```
 
-也可以一次合并任意数量的字体。输入顺序就是回退顺序：
+### 3. 合并字体
+
+Windows 用户可以在文件夹空白处按住 Shift 并单击鼠标右键，选择“在此处打开 PowerShell 窗口”，然后运行：
 
 ```powershell
-font-merger-windows-x64.exe "Latin.ttf" "CJK.ttc#0" "Symbols.ttf" -o "Combined.ttf"
+./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
-## 开发运行
+第一个字体优先，第二个字体负责补充缺少的字符。还可以在后面继续添加其他字体。
+
+#### 合并微软雅黑
+
+微软雅黑是 TTC 字体集合。先查看其中有哪些字体：
+
+```powershell
+./font-merger-windows-x64.exe --list "C:\Windows\Fonts\msyh.ttc"
+```
+
+再选择要使用的序号，例如 `#0`：
+
+```powershell
+./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "C:\Windows\Fonts\msyh.ttc#0" --family "Inconsolata-YaHei" --style Medium -o "Inconsolata-YaHei-Medium.ttf"
+```
+
+> 路径中有 `#0` 时，请保留两边的英文双引号。
+
+### 4. 输出结果
+
+合并完成后，会在指定位置生成新的 `.ttf` 字体，例如：
+
+```text
+Inconsolata-LXGWMono-Medium.ttf
+```
+
+要制作完整的字体家族，可以分别合并 Regular、Medium、Bold、Italic 等对应样式，并为它们设置相同的 `--family`。
+
+### 5. 安装字体
+
+- Windows：双击 TTF 文件 → 点击“安装”
+- macOS：双击 TTF 文件 → 安装到字体册
+- Linux：拷贝到 `~/.local/share/fonts/` → 运行 `fc-cache -fv`
+
+### 6. 编辑器使用
+
+Sublime Text：打开 `Preferences.sublime-settings`：
+
+```json
+{
+    "font_face": "Inconsolata-LXGWMono",
+    "font_size": 14
+}
+```
+
+VS Code：管理 → 设置，搜索 `Font Family`，粘贴：
+
+```text
+'Inconsolata-LXGWMono', 'Source Han Mono SC', Consolas, 'Courier New', monospace
+```
+
+### 7. 使用 Python 源码（开发者）
+
+普通用户不需要这一步。如果想直接运行源码：
 
 ```powershell
 python -m pip install -e .
-font-merger --list "C:\Windows\Fonts\msyh.ttc"
-font-merger "Latin.ttf" "CJK.ttc#0" -o "Merged.ttf"
-python -m unittest discover -s tests -v
+font-merger "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" -o "merged.ttf"
 ```
 
-可变 TrueType 字体默认在各轴默认值处静态化，也可以指定坐标：
+### 8. 项目文件结构示例
 
-```powershell
-font-merger "Latin-VF.ttf" "CJK-VF.ttf" --axis "wght=600" -o "Merged-Semibold.ttf"
+```text
+.
+├── Font_Merger.py                  # 主程序
+├── Inconsolata-Medium.ttf          # 示例英文字体
+├── LXGWBright-Medium.ttf           # 示例中文字体
+├── merged_fonts/                   # 输出字体文件夹
+└── tests/                          # 自动化测试
 ```
 
-## 正确性与性能
+字体合并不会改变源字体许可证。分享合并后的字体前，请确认所有源字体都允许这样使用。
 
-- TTC/OTC 依据文件签名识别，而不是只看扩展名；用 `path#INDEX` 精确选择 face。
-- 后续字体先取 Unicode 补集再合并，减少大字体的内存、I/O 和输出体积。
-- 不启动 `pyftmerge` 子进程；所有输入一次合并。
-- UPM 不同时使用 fontTools 的全表缩放器，覆盖轮廓、度量和 OpenType 定位数据。
-- 保留 GSUB/GPOS 及其 glyph closure；保留已有纵排度量，并给缺少纵排表的字体补充中性度量。
-- CFF OTF 自动转换为 TrueType 二次曲线；输出统一为静态 TTF。
-- 写入后重新打开并核验字符覆盖与 UPM，验证通过后才替换目标文件。
-
-当前有意拒绝彩色/位图字体（COLR/CPAL、CBDT/CBLC、SVG、sbix）和 CFF2 可变字体。静默丢表会得到“能安装但显示错误”的文件，明确失败更安全。字体合并不会改变字体许可证；发布或分发成品前请检查所有源字体的授权。
-
-## 调研结论
-
-你记忆中的相似仓库是 [CandyTek/EditorMonospacedFont](https://github.com/CandyTek/EditorMonospacedFont)：它收集现成混合字体，并非通用合并工具，因此没有解决 TTC 输入问题。
-
-对 `mrx7014/FontMerger`、`luzi82/mono-merge`、Warcraft Font Merger 的代码级比较和本实现的取舍见 [docs/research.md](docs/research.md)。底层合并基于 [fontTools merge](https://fonttools.readthedocs.io/en/stable/merge.html)。
+同类工具调研与技术说明见 [docs/research.md](docs/research.md)。
 
 ## License
 
