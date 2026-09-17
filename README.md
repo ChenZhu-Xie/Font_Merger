@@ -12,15 +12,15 @@
 >
 > 將 🀄️:🦜（= 2:1 等寬）的雙字型取聯集（純英文字型的所有字元覆蓋中文字型中的對應部分），生成中英雙語單一字型。
 
-### VS Code：效果 / Effect / 效果
+### VS Code
 
 <img width="2375" height="1485" alt="VS Code font merging effect" src="https://github.com/user-attachments/assets/aa372e72-b045-4001-97ad-668e82db3af8" />
 
-### Sublime Text：效果 / Effect / 效果
+### Sublime Text
 
 <img width="2442" height="1538" alt="Sublime Text font merging effect" src="https://github.com/user-attachments/assets/fcc89898-a2df-4936-b238-2726e244f963" />
 
-### SilverBullet：效果 / Effect / 效果
+### SilverBullet
 
 <img width="2700" height="1811" alt="SilverBullet font merging effect" src="https://github.com/user-attachments/assets/d542753d-c39a-48a2-a116-387369416237" />
 
