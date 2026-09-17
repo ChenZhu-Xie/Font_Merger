@@ -42,7 +42,7 @@
 在 [Releases](https://github.com/ChenZhu-Xie/Font_Merger/releases) 下载适合你系统的文件：
 
 - Windows：`font-merger-windows-x64.exe`
-- Windows 图形界面：`font-merger-gui-windows-x64.exe`
+- Windows 图形界面：`font-merger-gui-windows-x64.zip`
 - Linux：`font-merger-linux-x64`
 - macOS：`font-merger-macos`
 
@@ -58,7 +58,7 @@ LXGWBright-Medium.ttf
 
 ### 3. 合并字体
 
-Windows 用户推荐双击 `font-merger-gui-windows-x64.exe`。添加字体后，可以直观选择字形来源、Hinting 来源和字重规则，再点击“开始合并”。界面支持简体中文、繁體中文和 English，可在右上角随时切换。
+Windows 用户推荐下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体后，可以直观选择字形来源、Hinting 来源和字重规则，再点击“开始合并”。界面支持简体中文、繁體中文和 English，可在右上角随时切换。
 
 也可以使用命令行。Windows 用户在文件夹空白处按住 Shift 并单击鼠标右键，选择“在此处打开 PowerShell 窗口”，然后运行：
 
@@ -175,4 +175,4 @@ font-merger "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" -o "merged.ttf"
 
 ## License
 
-[MIT](LICENSE)
+[GPL-3.0](LICENSE)

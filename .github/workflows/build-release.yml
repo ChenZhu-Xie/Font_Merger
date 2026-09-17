@@ -28,15 +28,31 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - name: Download verified GUI font
+        if: runner.os == 'Windows'
+        run: python scripts/fetch_gui_font.py --release-assets
       - name: Install build dependencies
         run: python -m pip install ".[build]"
+      - name: Remove unused Nerd Font symbols
+        if: runner.os == 'Windows'
+        run: python scripts/prepare_gui_font.py
       - name: Run tests
         run: python -m unittest discover -s tests -v
       - name: Build one-file executable
         run: python -m PyInstaller --noconfirm --clean --onefile --name "${{ matrix.artifact }}" --collect-submodules fontTools.ttLib.tables --collect-submodules fontTools.encodings Font_Merger.py
       - name: Build Windows GUI executable
         if: runner.os == 'Windows'
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "font-merger-gui-windows-x64" --collect-submodules fontTools.ttLib.tables --collect-submodules fontTools.encodings Font_Merger_GUI.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "font-merger-gui-windows-x64" --add-data "assets/fonts/JetBrainsLxgwNerdMono-Regular.ttf;assets/fonts" --add-data "THIRD_PARTY_NOTICES.md;." --collect-submodules fontTools.ttLib.tables --collect-submodules fontTools.encodings Font_Merger_GUI.py
+      - name: Package Windows GUI with licenses
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = 'dist/font-merger-gui-windows-x64-package'
+          New-Item -ItemType Directory -Force "$package/licenses" | Out-Null
+          Copy-Item 'dist/font-merger-gui-windows-x64.exe' $package
+          Copy-Item 'LICENSE', 'THIRD_PARTY_NOTICES.md' $package
+          Copy-Item 'release-licenses/*' "$package/licenses"
+          Compress-Archive -Path "$package/*" -DestinationPath 'dist/font-merger-gui-windows-x64.zip'
       - name: Smoke test executable (Windows)
         if: runner.os == 'Windows'
         run: "& 'dist/${{ matrix.artifact }}.exe' --version"
@@ -48,12 +64,12 @@ jobs:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}*
           if-no-files-found: error
-      - name: Upload Windows GUI executable
+      - name: Upload Windows GUI package
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: font-merger-gui-windows-x64
-          path: dist/font-merger-gui-windows-x64.exe
+          path: dist/font-merger-gui-windows-x64.zip
           if-no-files-found: error
 
   release:

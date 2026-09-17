@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
+import ctypes
 import logging
+import os
 import queue
 import re
 import sys
 import threading
 import tkinter as tk
+import tkinter.font as tkfont
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Any
@@ -23,6 +26,69 @@ from Font_Merger import (
     parse_axis,
     parse_source,
 )
+
+
+DEFAULT_LOCALE = "zh_CN"
+GUI_FONT_FAMILY = "JetBrainsLxgwNerdMono"
+GUI_FONT_FILENAME = "JetBrainsLxgwNerdMono-Regular.ttf"
+GUI_FONT_FALLBACK = "Segoe UI"
+GUI_FONT_RELATIVE_PATH = Path("assets") / "fonts" / GUI_FONT_FILENAME
+
+
+def gui_font_candidates(
+    app_dir: Path | None = None, windows_fonts: Path | None = None
+) -> tuple[Path, Path]:
+    """Return deterministic bundled-first locations for the GUI font."""
+    if app_dir is None:
+        app_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    if windows_fonts is None:
+        windows_fonts = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
+    return app_dir / GUI_FONT_RELATIVE_PATH, windows_fonts / GUI_FONT_FILENAME
+
+
+def select_gui_font_family(available_families: tuple[str, ...]) -> str:
+    """Select the requested family when Tk can see it, otherwise fall back safely."""
+    families = {family.casefold(): family for family in available_families}
+    return families.get(GUI_FONT_FAMILY.casefold(), GUI_FONT_FALLBACK)
+
+
+def register_private_font(path: Path) -> bool:
+    """Register a font for this Windows process without installing it globally."""
+    if sys.platform != "win32" or not path.is_file():
+        return False
+    return bool(ctypes.windll.gdi32.AddFontResourceExW(str(path), 0x10, 0))
+
+
+def unregister_private_font(path: Path | None) -> None:
+    if sys.platform == "win32" and path is not None:
+        ctypes.windll.gdi32.RemoveFontResourceExW(str(path), 0x10, 0)
+
+
+def configure_gui_font(root: tk.Tk) -> tuple[str, Path | None]:
+    """Load the bundled font and apply one family to every Tk widget class."""
+    registered = next(
+        (path for path in gui_font_candidates() if register_private_font(path)),
+        None,
+    )
+    family = select_gui_font_family(tuple(tkfont.families(root)))
+    for name in (
+        "TkDefaultFont",
+        "TkTextFont",
+        "TkFixedFont",
+        "TkMenuFont",
+        "TkHeadingFont",
+        "TkCaptionFont",
+        "TkSmallCaptionFont",
+        "TkIconFont",
+        "TkTooltipFont",
+    ):
+        try:
+            tkfont.nametofont(name, root=root).configure(family=family)
+        except tk.TclError:
+            pass
+    root.option_add("*Font", f"{{{family}}} 10")
+    root.option_add("*TCombobox*Listbox.font", f"{{{family}}} 10")
+    return family, registered
 
 
 LANGUAGES = {
@@ -481,7 +547,8 @@ class QueueLogHandler(logging.Handler):
 class FontMergerGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.locale = "zh_CN"
+        self.locale = DEFAULT_LOCALE
+        self.gui_font_family, self._registered_gui_font = configure_gui_font(root)
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self.localized_widgets: list[tuple[tk.Widget, str]] = []
         self.choice_bindings: list[dict[str, Any]] = []
@@ -553,7 +620,7 @@ class FontMergerGUI:
         style = ttk.Style(self.root)
         if "clam" in style.theme_names():
             style.theme_use("clam")
-        style.configure(".", font=("Segoe UI", 10))
+        style.configure(".", font=(self.gui_font_family, 10))
         style.configure("App.TFrame", background=APP_BACKGROUND)
         for region, colors in PALETTES.items():
             style.configure(
@@ -571,13 +638,13 @@ class FontMergerGUI:
                 f"{region}.Title.TLabel",
                 background=colors["surface"],
                 foreground=colors["text"],
-                font=("Segoe UI Semibold", 12),
+                font=(self.gui_font_family, 12, "bold"),
             )
             style.configure(
                 f"{region}.Muted.TLabel",
                 background=colors["surface"],
                 foreground=colors["muted"],
-                font=("Segoe UI", 9),
+                font=(self.gui_font_family, 9),
             )
             style.configure(
                 f"{region}.Inner.TLabel",
@@ -588,7 +655,7 @@ class FontMergerGUI:
                 f"{region}.InnerMuted.TLabel",
                 background=colors["control"],
                 foreground=colors["muted"],
-                font=("Segoe UI", 9),
+                font=(self.gui_font_family, 9),
             )
             style.configure(
                 f"{region}.TButton",
@@ -632,7 +699,7 @@ class FontMergerGUI:
             foreground="#FFFFFF",
             borderwidth=0,
             padding=(23, 11),
-            font=("Segoe UI Semibold", 10),
+            font=(self.gui_font_family, 10, "bold"),
         )
         style.map(
             "Primary.TButton",
@@ -748,7 +815,7 @@ class FontMergerGUI:
             width=2,
             bg=colors["control"],
             fg=colors["accent"],
-            font=("Segoe UI Semibold", 10),
+            font=(self.gui_font_family, 10, "bold"),
         ).grid(row=0, column=0, rowspan=2, sticky="nw", padx=(0, 10))
         title_label = ttk.Label(heading, style=f"{region}.Title.TLabel")
         self._register_text(title_label, title)
@@ -765,7 +832,7 @@ class FontMergerGUI:
             header,
             text="Font Merger",
             style="Header.TLabel",
-            font=("Segoe UI Semibold", 20),
+            font=(self.gui_font_family, 20, "bold"),
         ).grid(row=0, column=0, sticky="w")
         subtitle = ttk.Label(header, style="Header.Muted.TLabel")
         self._register_text(subtitle, "header_subtitle")
@@ -788,7 +855,7 @@ class FontMergerGUI:
             header,
             text=f"v{VERSION}",
             style="Header.TLabel",
-            font=("Segoe UI Semibold", 9),
+            font=(self.gui_font_family, 9, "bold"),
         ).grid(row=1, column=2, sticky="e", pady=(4, 0))
         return header
 
@@ -816,7 +883,7 @@ class FontMergerGUI:
             selectbackground=colors["accent"],
             selectforeground="#FFFFFF",
             highlightthickness=0,
-            font=("Segoe UI", 10),
+            font=(self.gui_font_family, 10),
             activestyle="none",
         )
         self.fonts.grid(row=0, column=0, sticky="nsew")
@@ -926,7 +993,7 @@ class FontMergerGUI:
         title_label = ttk.Label(
             panel,
             style="Rules.Inner.TLabel",
-            font=("Segoe UI Semibold", 10),
+            font=(self.gui_font_family, 10, "bold"),
         )
         self._register_text(title_label, title)
         title_label.grid(row=0, column=0, sticky="w")
@@ -1044,7 +1111,7 @@ class FontMergerGUI:
         label = ttk.Label(
             frame,
             style="Footer.Inner.TLabel",
-            font=("Segoe UI Semibold", 9),
+            font=(self.gui_font_family, 9, "bold"),
         )
         self._register_text(label, "summary")
         label.grid(row=0, column=0, sticky="w", padx=(0, 12))
@@ -1096,7 +1163,7 @@ class FontMergerGUI:
             borderwidth=0,
             padx=10,
             pady=8,
-            font=("Cascadia Mono", 9),
+            font=(self.gui_font_family, 9),
         )
         self.log.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         self.log.grid_remove()
@@ -1395,14 +1462,13 @@ class FontMergerGUI:
     def close(self) -> None:
         LOG.removeHandler(self.log_handler)
         self.canvas.unbind_all("<MouseWheel>")
+        unregister_private_font(self._registered_gui_font)
         self.root.destroy()
 
 
 def main() -> None:
     if sys.platform == "win32":
         try:
-            import ctypes
-
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except (AttributeError, OSError):
             pass

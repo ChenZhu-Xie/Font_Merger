@@ -20,6 +20,8 @@ build/
 dist/
 *.egg-info/
 *.spec
+assets/fonts/*.ttf
+release-licenses/
 
 # Version control folder
 manual_version_control/
