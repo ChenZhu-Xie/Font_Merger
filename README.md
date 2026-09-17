@@ -58,7 +58,7 @@ LXGWBright-Medium.ttf
 
 ### 3. 合并字体
 
-Windows 用户推荐双击 `font-merger-gui-windows-x64.exe`。添加字体后，可以直观选择字形来源、Hinting 来源和字重规则，再点击“开始合并”。
+Windows 用户推荐双击 `font-merger-gui-windows-x64.exe`。添加字体后，可以直观选择字形来源、Hinting 来源和字重规则，再点击“开始合并”。界面支持简体中文、繁體中文和 English，可在右上角随时切换。
 
 也可以使用命令行。Windows 用户在文件夹空白处按住 Shift 并单击鼠标右键，选择“在此处打开 PowerShell 窗口”，然后运行：
 
