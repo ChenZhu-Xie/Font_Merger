@@ -15,6 +15,11 @@ Thumbs.db
 # Logs and cache
 *.log
 *.cache
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+*.spec
 
 # Version control folder
 manual_version_control/

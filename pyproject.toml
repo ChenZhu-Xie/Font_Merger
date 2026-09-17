@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "font-merger-union"
+version = "2.0.0"
+description = "Merge TTF, OTF, TTC and OTC fonts with deterministic fallback priority"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "ChenZhu-Xie" }]
+dependencies = ["fonttools>=4.51"]
+
+[project.scripts]
+font-merger = "Font_Merger:main"
+
+[tool.setuptools]
+py-modules = ["Font_Merger"]
+
+[project.optional-dependencies]
+build = ["pyinstaller>=6.10"]
