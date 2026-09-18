@@ -1,3 +1,5 @@
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
@@ -13,6 +15,7 @@ from Font_Merger import (
     collection_faces,
     merge_font_family,
     merge_fonts,
+    main,
     parse_source,
     plan_weights,
     resolve_hinting_source,
@@ -92,11 +95,55 @@ class FontMergerTests(TestCase):
         self.assertEqual(instances[0].name, "Regular")
         self.assertEqual(instances[0].coordinate_map, {"wght": 400})
 
-    def test_automatic_weight_plan_uses_richer_source(self):
+    def test_list_labels_a_standalone_font_as_font_not_face_zero(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["--list", str(LATIN)]), 0)
+        self.assertTrue(output.getvalue().startswith("font\t"))
+        self.assertNotIn("#0", output.getvalue())
+
+    def test_automatic_weight_plan_matches_variable_font_to_static_weight(self):
         infos = self._weight_infos()
         plan = plan_weights(infos, [0, 1], (0, 1), "auto")
+        self.assertEqual([weight for weight, _mapping in plan], [400])
+        self.assertEqual(plan[0][1], (None, 400))
+
+    def test_automatic_weight_plan_matches_arbitrary_static_weight(self):
+        latin, cjk = self._weight_infos()
+        latin = SourceInfo(
+            latin.source,
+            latin.family,
+            "DemiLight",
+            latin.unicodes,
+            latin.upm,
+            latin.variable,
+            latin.axes,
+            latin.instances,
+            350,
+        )
+        plan = plan_weights((latin, cjk), [0, 1], (0, 1), "auto")
+        self.assertEqual([weight for weight, _mapping in plan], [350])
+        self.assertEqual(plan[0][1], (None, 350))
+
+    def test_automatic_weight_plan_keeps_named_weights_when_all_are_variable(self):
+        latin, cjk = self._weight_infos()
+        latin = SourceInfo(
+            latin.source,
+            latin.family,
+            latin.style,
+            latin.unicodes,
+            latin.upm,
+            True,
+            (AxisInfo("wght", "Weight", 100, 400, 900),),
+            (
+                InstanceInfo("Regular", (("wght", 400),)),
+                InstanceInfo("Bold", (("wght", 700),)),
+            ),
+            400,
+        )
+        plan = plan_weights((latin, cjk), [0, 1], (0, 1), "auto")
         self.assertEqual([weight for weight, _mapping in plan], [100, 400, 700])
-        self.assertEqual(plan[0][1], (None, 100))
+        self.assertEqual(plan[-1][1], (700, 700))
 
     def test_weight_plan_modes_remain_independent(self):
         infos = self._weight_infos()

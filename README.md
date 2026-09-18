@@ -85,7 +85,7 @@
 
 下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体、选择输出位置，再点击“开始合并”即可。界面支持简体中文、繁體中文和 English。
 
-默认设置适合大多数用户：自动识别西文与 CJK 字体，让西文字体覆盖英文等重复字符，同时保留中文字体的其余字符，并以中文字体作为显示基准，避免中文笔画因缩放而变粗。程序还会自动生成可用字重；两款字体的添加顺序不影响识别结果。
+默认设置适合大多数用户：自动识别西文与 CJK 字体，让西文字体覆盖英文等重复字符，同时保留中文字体的其余字符，并以中文字体作为显示基准，避免中文笔画因缩放而变粗。程序还会自动匹配可实现的字重；例如静态西文字体为 350、中文可变字体支持 `wght=100..900` 时，会直接生成双方均为 350 的静态字体。两款字体的添加顺序不影响识别结果。
 
 <a id="zh-cn-cli"></a>
 
@@ -121,7 +121,7 @@ TTC / OTC 是字体集合。先查看其中的字体：
 
 ##### Hinting
 
-一份字体只能安全使用一套 TrueType Hinting。中西文双字体默认以中文 / CJK 字体的 UPM 和 Hinting 为显示基准；源字体含可用 Hinting 时会优先保留。如果更在意西文 Hinting，可以加上：
+一份字体只能安全使用一套 TrueType Hinting。中西文双字体默认以中文 / CJK 字体的 UPM 和 Hinting 为显示基准；这不会改变字形来源，英文和数字仍优先取自西文字体。源字体含可用 Hinting 时会优先保留。如果更在意西文 Hinting，可以加上：
 
 ```powershell
 --hinting-source latin
@@ -133,11 +133,19 @@ TTC / OTC 是字体集合。先查看其中的字体：
 
 ##### 多字重
 
-不指定字重时，程序采用字重较丰富的一侧，自动生成 Thin、Regular、Bold 等文件；另一侧缺少对应字重时使用最接近的一款。可用 `--list` 查看字体包含的实例：
+默认自动规则：
+
+- 静态字体 + 可变字体：按静态字体的实际字重自动匹配 `wght`，如静态 350 自动匹配可变 350。
+- 两款可变字体：生成双方均可实现的命名字重。
+- Regular、Bold 分别合并时保持相同的家族名，安装后即可自动切换真正的粗体。
+
+可用 `--list` 查看字体包含的实例：
 
 ```powershell
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
+
+`face #0` 只是 TTC / OTC 的字体序号，并非字重。需要手动覆盖时可写 `--axis wght=350`；默认情况下通常不必填写。
 
 只需一个字重时明确指定实例：
 
@@ -246,7 +254,7 @@ Get the file for your system from [Releases](https://github.com/ChenZhu-Xie/Font
 
 Download and extract the GUI archive, then double-click `font-merger-gui-windows-x64.exe`. Add fonts, choose an output path, and click “Merge fonts.” The interface supports Simplified Chinese, Traditional Chinese, and English.
 
-The defaults suit most users. Font Merger detects Latin and CJK fonts automatically, lets the Latin font replace duplicate Latin glyphs, preserves the remaining Chinese glyphs, and uses the Chinese font as the display baseline so scaling does not make Chinese strokes heavier. It also generates available weights automatically; the order of a Latin/CJK pair does not affect detection.
+The defaults suit most users. Font Merger detects Latin and CJK fonts automatically, lets the Latin font replace duplicate Latin glyphs, preserves the remaining Chinese glyphs, and uses the Chinese font as the display baseline so scaling does not make Chinese strokes heavier. It also matches realizable weights automatically; for example, a static Latin face at 350 makes a CJK variable font with `wght=100..900` instantiate at 350. The order of a Latin/CJK pair does not affect detection.
 
 <a id="en-cli"></a>
 
@@ -282,7 +290,7 @@ Then select an index such as `#0`:
 
 ##### Hinting
 
-A font can safely use only one set of TrueType hinting. For a Latin/CJK pair, the default uses the CJK font's UPM and hinting as the display baseline and preserves usable source hinting when possible. To prioritize Latin hinting instead, add:
+A font can safely use only one set of TrueType hinting. For a Latin/CJK pair, the default uses the CJK font's UPM and hinting as the display baseline. This does not change glyph ownership: Latin letters and digits still come from the Latin font. Usable source hinting is preserved when possible. To prioritize Latin hinting instead, add:
 
 ```powershell
 --hinting-source latin
@@ -294,11 +302,19 @@ You can also choose `cjk`, `none`, or an input font number such as `--hinting-so
 
 ##### Multiple weights
 
-When no weight is specified, Font Merger uses the side with more weights and generates Thin, Regular, Bold, and other available files. If the other side lacks a matching weight, the nearest one is used. List the instances in a font with `--list`:
+Default automatic rules:
+
+- Static + variable: the static face's actual weight selects the matching `wght`, such as static 350 selecting variable 350.
+- Two variable fonts: generate named weights that both inputs can realize.
+- When Regular and Bold are merged separately, keep the same family name so applications can select the real Bold automatically.
+
+List the instances in a font with `--list`:
 
 ```powershell
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
+
+`face #0` is only the font index in a TTC/OTC collection, not a weight. Use `--axis wght=350` to override automatic matching; it is normally unnecessary.
 
 To generate only one weight, select its instance explicitly:
 
@@ -407,7 +423,7 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 
 下載圖形介面壓縮檔，解壓縮後按兩下 `font-merger-gui-windows-x64.exe`。加入字型、選擇輸出位置，再按一下「開始合併字型」即可。介面支援簡體中文、繁體中文與 English。
 
-預設設定適合大多數使用者：自動辨識西文與 CJK 字型，讓西文字型覆蓋英文等重複字元，同時保留中文字型的其餘字元，並以中文字型作為顯示基準，避免中文筆畫因縮放而變粗。程式也會自動產生可用字重；兩款字型的加入順序不影響辨識結果。
+預設設定適合大多數使用者：自動辨識西文與 CJK 字型，讓西文字型覆蓋英文等重複字元，同時保留中文字型的其餘字元，並以中文字型作為顯示基準，避免中文筆畫因縮放而變粗。程式也會自動配對可實現的字重；例如靜態西文字型為 350、中文可變字型支援 `wght=100..900` 時，會直接產生雙方均為 350 的靜態字型。兩款字型的加入順序不影響辨識結果。
 
 <a id="zh-tw-cli"></a>
 
@@ -443,7 +459,7 @@ TTC / OTC 是字型集合。先查看其中的字型：
 
 ##### Hinting
 
-一份字型只能安全使用一套 TrueType Hinting。中西文雙字型預設以中文 / CJK 字型的 UPM 與 Hinting 作為顯示基準；來源字型含有可用的 Hinting 時會優先保留。若更重視西文 Hinting，可加入：
+一份字型只能安全使用一套 TrueType Hinting。中西文雙字型預設以中文 / CJK 字型的 UPM 與 Hinting 作為顯示基準；這不會改變字形來源，英文與數字仍優先取自西文字型。來源字型含有可用的 Hinting 時會優先保留。若更重視西文 Hinting，可加入：
 
 ```powershell
 --hinting-source latin
@@ -455,11 +471,19 @@ TTC / OTC 是字型集合。先查看其中的字型：
 
 ##### 多字重
 
-未指定字重時，程式會採用字重較豐富的一側，自動產生 Thin、Regular、Bold 等檔案；另一側缺少對應字重時，則使用最接近的字重。可用 `--list` 查看字型包含的實例：
+預設自動規則：
+
+- 靜態字型 + 可變字型：依靜態字型的實際字重自動配對 `wght`，例如靜態 350 自動配對可變 350。
+- 兩款可變字型：產生雙方均可實現的命名字重。
+- Regular、Bold 分別合併時保持相同家族名稱，安裝後即可自動切換真正的粗體。
+
+可用 `--list` 查看字型包含的實例：
 
 ```powershell
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
+
+`face #0` 只是 TTC / OTC 的字型編號，並非字重。需要手動覆蓋時可寫 `--axis wght=350`；預設情況通常不必填寫。
 
 只需要一個字重時，請明確指定實例：
 

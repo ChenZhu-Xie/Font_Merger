@@ -511,13 +511,31 @@ def plan_weights(
         index = pair[0 if normalized == "latin" else 1]
         targets = list(inventories[index])
     elif normalized == "auto":
-        # Prefer the source exposing the richest family. A tie follows glyph priority.
-        index = max(
-            priority, key=lambda item: (len(inventories[item]), -priority.index(item))
-        )
-        targets = list(inventories[index])
+        # A static face cannot change weight, so let it constrain variable inputs.
+        # This makes the common "static Latin + variable CJK" case do what the
+        # user expects: a Latin face at 350 automatically selects wght=350 from
+        # the CJK font instead of producing several files with repeated Latin
+        # outlines. When every input is variable, retain the richer family's
+        # useful named-instance anchors.
+        static_indexes = [
+            index for index in priority if weight_axis(infos[index]) is None
+        ]
+        if static_indexes:
+            index = static_indexes[0]
+        else:
+            index = max(
+                priority,
+                key=lambda item: (len(inventories[item]), -priority.index(item)),
+            )
+        preferred_targets = list(inventories[index])
+        compatible_targets = [
+            target
+            for target in preferred_targets
+            if all(matched_weight(info, target)[1] == 0 for info in infos)
+        ]
+        targets = compatible_targets or preferred_targets
         LOG.info(
-            "自动字重来源：#%d %s（%s）",
+            "自动字重基准：#%d %s（%s）",
             index + 1,
             infos[index].family,
             ", ".join(map(str, targets)),
@@ -1326,8 +1344,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.list_font:
-            for face in collection_faces(args.list_font.expanduser().resolve()):
-                print(f"#{face.index}\t{face.family}\t{face.style}")
+            list_path = args.list_font.expanduser().resolve()
+            collection = is_collection(list_path)
+            for face in collection_faces(list_path):
+                label = f"face #{face.index}" if collection else "font"
+                print(f"{label}\t{face.family}\t{face.style}")
                 for axis in face.axes:
                     print(
                         f"  axis {axis.tag}\t{axis.minimum:g}..{axis.maximum:g}"
