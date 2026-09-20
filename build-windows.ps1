@@ -90,7 +90,7 @@ function New-DebugBuild {
     New-Item -ItemType Directory -Force -Path $debugDir, $debugWork, $specDir |
         Out-Null
 
-    Invoke-Python -m PyInstaller --noconfirm --clean --onedir --console --debug all `
+    Invoke-Python -m PyInstaller --noconfirm --clean --onedir --windowed --debug all `
         --name "font-merger-gui-windows-x64-debug" `
         --distpath $debugDir --workpath $debugWork --specpath $specDir `
         --add-data "$guiFont;assets/fonts" `
