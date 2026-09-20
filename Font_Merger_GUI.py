@@ -33,6 +33,52 @@ GUI_FONT_FAMILY = "JetBrainsLxgwNerdMono"
 GUI_FONT_FILENAME = "JetBrainsLxgwNerdMono-Regular.ttf"
 GUI_FONT_FALLBACK = "Segoe UI"
 GUI_FONT_RELATIVE_PATH = Path("assets") / "fonts" / GUI_FONT_FILENAME
+FONT_FILE_SUFFIXES = {".ttf", ".otf", ".ttc", ".otc"}
+
+
+def windows_font_directories() -> tuple[Path, ...]:
+    """Return physical system and per-user Windows font directories."""
+    if sys.platform != "win32":
+        return ()
+
+    candidates = [Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"]
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "Microsoft" / "Windows" / "Fonts")
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in candidates:
+        key = os.path.normcase(os.path.abspath(path))
+        if key not in seen:
+            seen.add(key)
+            result.append(path)
+    return tuple(result)
+
+
+def installed_font_files(
+    directories: tuple[Path, ...] | None = None,
+) -> tuple[Path, ...]:
+    """Enumerate supported font files in Windows font directories."""
+    paths: dict[str, Path] = {}
+    search_directories = windows_font_directories() if directories is None else directories
+    for directory in search_directories:
+        try:
+            for path in directory.iterdir():
+                if path.is_file() and path.suffix.casefold() in FONT_FILE_SUFFIXES:
+                    paths.setdefault(os.path.normcase(os.path.abspath(path)), path)
+        except OSError:
+            continue
+    return tuple(
+        sorted(paths.values(), key=lambda path: (path.name.casefold(), str(path)))
+    )
+
+
+def is_single_weight_request(instance: str, axes: str) -> bool:
+    """Whether advanced settings explicitly select one output weight."""
+    if instance.strip():
+        return True
+    return bool(re.search(r"(?:^|[,;\s])wght\s*=", axes, flags=re.IGNORECASE))
 
 
 def gui_font_candidates(
@@ -106,6 +152,11 @@ TEXT = {
         "fonts_desc": "至少添加两个字体；TTC / OTC 会提示选择其中的字体。",
         "font_count": "{count} 个字体",
         "add_fonts": "＋ 添加字体",
+        "system_fonts": "系统字体…",
+        "system_fonts_title": "选择已安装字体",
+        "system_fonts_desc": "系统字体和当前用户字体；可用 Ctrl / Shift 多选。",
+        "system_fonts_empty": "没有找到可用的 TTF / OTF / TTC / OTC 字体。",
+        "add_selected": "添加所选",
         "remove_selected": "移除所选",
         "move_up": "↑ 上移",
         "move_down": "↓ 下移",
@@ -194,6 +245,11 @@ TEXT = {
         "fonts_desc": "至少加入兩個字型；TTC / OTC 會提示選擇其中的字型。",
         "font_count": "{count} 個字型",
         "add_fonts": "＋ 加入字型",
+        "system_fonts": "系統字型…",
+        "system_fonts_title": "選擇已安裝字型",
+        "system_fonts_desc": "系統字型與目前使用者字型；可用 Ctrl / Shift 多選。",
+        "system_fonts_empty": "找不到可用的 TTF / OTF / TTC / OTC 字型。",
+        "add_selected": "加入所選",
         "remove_selected": "移除所選",
         "move_up": "↑ 上移",
         "move_down": "↓ 下移",
@@ -282,6 +338,11 @@ TEXT = {
         "fonts_desc": "Add at least two fonts. TTC / OTC files will prompt for a face.",
         "font_count": "{count} fonts",
         "add_fonts": "+ Add fonts",
+        "system_fonts": "System fonts…",
+        "system_fonts_title": "Choose installed fonts",
+        "system_fonts_desc": "System and per-user fonts; use Ctrl / Shift for multiple selection.",
+        "system_fonts_empty": "No supported TTF / OTF / TTC / OTC fonts were found.",
+        "add_selected": "Add selected",
         "remove_selected": "Remove selected",
         "move_up": "↑ Move up",
         "move_down": "↓ Move down",
@@ -585,6 +646,8 @@ class FontMergerGUI:
         self.language_display = tk.StringVar(value=LANGUAGES[self.locale])
 
         self._build_layout()
+        self.instance.trace_add("write", self._sync_single_weight_state)
+        self.axes.trace_add("write", self._sync_single_weight_state)
         for variable in (
             self.priority,
             self.hinting,
@@ -598,6 +661,7 @@ class FontMergerGUI:
             self.axes,
         ):
             variable.trace_add("write", self.update_summary)
+        self._sync_single_weight_state()
 
         self.log_handler = QueueLogHandler(self.events)
         self.log_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
@@ -782,6 +846,11 @@ class FontMergerGUI:
         units = -1 if event.delta > 0 else 1
         self.canvas.yview_scroll(units * 3, "units")
 
+    def _on_combobox_mousewheel(self, event: tk.Event) -> str:
+        """Scroll the page without letting Tk silently change a choice."""
+        self._on_mousewheel(event)
+        return "break"
+
     def _center_window(self, width: int, height: int) -> None:
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
         y = max(0, (self.root.winfo_screenheight() - height) // 2)
@@ -851,6 +920,7 @@ class FontMergerGUI:
         )
         language.grid(row=0, column=2, sticky="e")
         language.bind("<<ComboboxSelected>>", self._language_selected)
+        language.bind("<MouseWheel>", self._on_combobox_mousewheel)
         ttk.Label(
             header,
             text=f"v{VERSION}",
@@ -896,6 +966,12 @@ class FontMergerGUI:
         add = ttk.Button(buttons, command=self.add_fonts, style="Input.TButton")
         self._register_text(add, "add_fonts")
         add.pack(fill="x")
+        if sys.platform == "win32":
+            system = ttk.Button(
+                buttons, command=self.add_system_fonts, style="Input.TButton"
+            )
+            self._register_text(system, "system_fonts")
+            system.pack(fill="x", pady=(6, 0))
         remove = ttk.Button(buttons, command=self.remove_fonts, style="Input.TButton")
         self._register_text(remove, "remove_selected")
         remove.pack(fill="x", pady=(6, 0))
@@ -969,15 +1045,21 @@ class FontMergerGUI:
             WEIGHT_CHOICES,
         )
         weight_panel.grid(row=1, column=2, sticky="nsew", padx=(6, 0))
+        self.weights_combo = next(
+            binding["combo"]
+            for binding in reversed(self.choice_bindings)
+            if binding["code"] is self.weights
+        )
         missing = ttk.Label(weight_panel, style="Rules.InnerMuted.TLabel")
         self._register_text(missing, "missing_weight")
         missing.grid(row=3, column=0, sticky="w", pady=(9, 3))
-        self._localized_choice(
+        self.weight_match_combo = self._localized_choice(
             weight_panel,
             self.weight_match,
             MATCH_CHOICES,
             "Rules.TCombobox",
-        ).grid(row=4, column=0, sticky="ew")
+        )
+        self.weight_match_combo.grid(row=4, column=0, sticky="ew")
         return card
 
     def _choice_panel(
@@ -1028,10 +1110,14 @@ class FontMergerGUI:
             "choices": choices,
         }
         self.choice_bindings.append(binding)
+        code_variable.trace_add(
+            "write", lambda *_args, item=binding: self._refresh_choice(item)
+        )
         combo.bind(
             "<<ComboboxSelected>>",
             lambda _event, item=binding: self._choice_selected(item),
         )
+        combo.bind("<MouseWheel>", self._on_combobox_mousewheel)
         self._refresh_choice(binding)
         return combo
 
@@ -1097,9 +1183,12 @@ class FontMergerGUI:
             label_widget = ttk.Label(field, style="Advanced.Inner.TLabel")
             self._register_text(label_widget, label)
             label_widget.grid(row=0, column=0, sticky="w")
-            ttk.Entry(field, textvariable=variable, style="Advanced.TEntry").grid(
-                row=1, column=0, sticky="ew", pady=(4, 2)
-            )
+            entry = ttk.Entry(field, textvariable=variable, style="Advanced.TEntry")
+            entry.grid(row=1, column=0, sticky="ew", pady=(4, 2))
+            if label == "custom_weights":
+                self.custom_weights_entry = entry
+            elif label == "max_gap":
+                self.max_gap_entry = entry
             hint_widget = ttk.Label(field, style="Advanced.InnerMuted.TLabel")
             self._register_text(hint_widget, hint)
             hint_widget.grid(row=2, column=0, sticky="w")
@@ -1244,6 +1333,25 @@ class FontMergerGUI:
             self.log.grid_remove()
         self._refresh_toggle_texts()
 
+    def _single_weight_override_active(self) -> bool:
+        return is_single_weight_request(self.instance.get(), self.axes.get())
+
+    def _sync_single_weight_state(self, *_args: object) -> None:
+        """Keep single-weight and multi-weight settings mutually exclusive."""
+        single = self._single_weight_override_active()
+        if single:
+            self.weights.set("auto")
+            self.custom_weights.set("")
+            self.max_gap.set("")
+            self.weight_match.set("nearest")
+
+        combo_state = "disabled" if single else "readonly"
+        entry_state = tk.DISABLED if single else tk.NORMAL
+        self.weights_combo.configure(state=combo_state)
+        self.weight_match_combo.configure(state=combo_state)
+        self.custom_weights_entry.configure(state=entry_state)
+        self.max_gap_entry.configure(state=entry_state)
+
     def update_summary(self, *_args: object) -> None:
         priority = self.custom_priority.get().strip() or self._choice_label(
             self.priority.get(), PRIORITY_CHOICES
@@ -1254,8 +1362,9 @@ class FontMergerGUI:
         weights = self.custom_weights.get().strip() or self._choice_label(
             self.weights.get(), WEIGHT_CHOICES
         )
-        matching = self._choice_label(self.weight_match.get(), MATCH_CHOICES)
-        details = [priority, hinting, weights, matching]
+        details = [priority, hinting, weights]
+        if not self._single_weight_override_active():
+            details.append(self._choice_label(self.weight_match.get(), MATCH_CHOICES))
         if self.instance.get().strip():
             details.append(
                 self.t("summary_instance", value=self.instance.get().strip())
@@ -1283,6 +1392,10 @@ class FontMergerGUI:
                 (self.t("all_files"), "*.*"),
             ],
         )
+        self._add_font_paths(list(paths))
+
+    def _add_font_paths(self, paths: list[str]) -> None:
+        """Validate paths, handle collections, and append them to the input list."""
         for value in paths:
             path = Path(value)
             label = str(path)
@@ -1313,6 +1426,61 @@ class FontMergerGUI:
                 continue
             self.fonts.insert(tk.END, label)
         self.update_font_state()
+
+    def add_system_fonts(self) -> None:
+        """Choose installed fonts without using the Windows Fonts shell folder."""
+        paths = installed_font_files()
+        if not paths:
+            messagebox.showinfo(
+                self.t("system_fonts_title"),
+                self.t("system_fonts_empty"),
+                parent=self.root,
+            )
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self.t("system_fonts_title"))
+        dialog.transient(self.root)
+        dialog.geometry("760x520")
+        dialog.minsize(560, 360)
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(1, weight=1)
+
+        ttk.Label(
+            dialog,
+            text=self.t("system_fonts_desc"),
+            padding=(12, 10, 12, 6),
+        ).grid(row=0, column=0, sticky="ew")
+
+        body = ttk.Frame(dialog, padding=(12, 0, 12, 8))
+        body.grid(row=1, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+        picker = tk.Listbox(body, selectmode=tk.EXTENDED, activestyle="none")
+        picker.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(body, orient=tk.VERTICAL, command=picker.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        picker.configure(yscrollcommand=scrollbar.set)
+        for path in paths:
+            picker.insert(tk.END, f"{path.name}    [{path.parent}]")
+
+        chosen: list[str] = []
+
+        def accept() -> None:
+            chosen.extend(str(paths[index]) for index in picker.curselection())
+            dialog.destroy()
+
+        actions = ttk.Frame(dialog, padding=(12, 0, 12, 12))
+        actions.grid(row=2, column=0, sticky="e")
+        ttk.Button(actions, text=self.t("add_selected"), command=accept).pack()
+        picker.bind("<Double-Button-1>", lambda _event: accept())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.grab_set()
+        picker.focus_set()
+        self.root.wait_window(dialog)
+        if chosen:
+            self._add_font_paths(chosen)
 
     def remove_fonts(self) -> None:
         for index in reversed(self.fonts.curselection()):

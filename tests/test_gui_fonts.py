@@ -1,5 +1,7 @@
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import TestCase, skipUnless
+from unittest.mock import Mock, patch
 
 from fontTools.ttLib import TTFont
 
@@ -7,9 +9,13 @@ from Font_Merger_GUI import (
     DEFAULT_LOCALE,
     GUI_FONT_FAMILY,
     GUI_FONT_FILENAME,
+    FontMergerGUI,
     TEXT,
     gui_font_candidates,
+    installed_font_files,
+    is_single_weight_request,
     select_gui_font_family,
+    windows_font_directories,
 )
 from scripts.prepare_gui_font import is_nerd_symbol_codepoint
 
@@ -48,6 +54,48 @@ class GUIFontTests(TestCase):
 
     def test_safe_system_family_is_used_as_last_resort(self):
         self.assertEqual(select_gui_font_family(("Arial",)), "Segoe UI")
+
+    def test_single_weight_request_detects_instance_or_wght_axis(self):
+        self.assertTrue(is_single_weight_request("Bold", ""))
+        self.assertTrue(is_single_weight_request("", "wght=350"))
+        self.assertTrue(is_single_weight_request("", "wdth=90, WGHT =350"))
+        self.assertFalse(is_single_weight_request("", "wdth=90,slnt=-10"))
+        self.assertFalse(is_single_weight_request("", ""))
+
+    def test_installed_font_files_filters_and_sorts_supported_files(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            expected = (root / "Alpha.OTF", root / "zeta.ttf")
+            for path in (*expected, root / "notes.txt"):
+                path.touch()
+            (root / "folder.ttc").mkdir()
+
+            self.assertEqual(installed_font_files((root,)), expected)
+
+    def test_windows_font_directories_include_system_and_user_locations(self):
+        environment = {
+            "WINDIR": "D:/Windows",
+            "LOCALAPPDATA": "D:/Users/Test/AppData/Local",
+        }
+        with patch("Font_Merger_GUI.sys.platform", "win32"), patch.dict(
+            "Font_Merger_GUI.os.environ", environment, clear=True
+        ):
+            self.assertEqual(
+                windows_font_directories(),
+                (
+                    Path("D:/Windows/Fonts"),
+                    Path("D:/Users/Test/AppData/Local/Microsoft/Windows/Fonts"),
+                ),
+            )
+
+    def test_combobox_wheel_scrolls_page_without_changing_choice(self):
+        gui = Mock()
+        event = object()
+
+        result = FontMergerGUI._on_combobox_mousewheel(gui, event)
+
+        gui._on_mousewheel.assert_called_once_with(event)
+        self.assertEqual(result, "break")
 
     def test_nerd_symbol_ranges_are_identified_for_removal(self):
         for codepoint in (
