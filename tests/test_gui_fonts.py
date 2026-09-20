@@ -1,17 +1,22 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import tkinter as tk
 from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
 
 from fontTools.ttLib import TTFont
 
+from Font_Merger import FontSource
 from Font_Merger_GUI import (
     DEFAULT_LOCALE,
     GUI_FONT_FAMILY,
     GUI_FONT_FILENAME,
     FontMergerGUI,
+    InstalledFontFace,
     TEXT,
+    filter_installed_font_faces,
     gui_font_candidates,
+    installed_font_faces,
     installed_font_files,
     is_single_weight_request,
     select_gui_font_family,
@@ -72,6 +77,53 @@ class GUIFontTests(TestCase):
 
             self.assertEqual(installed_font_files((root,)), expected)
 
+    def test_installed_font_faces_expand_collections_and_sort_by_family(self):
+        regular = Path("C:/Windows/Fonts/zeta.ttf")
+        collection = Path("C:/Windows/Fonts/families.ttc")
+        face = lambda index, family, style: Mock(  # noqa: E731
+            index=index, family=family, style=style
+        )
+        with patch(
+            "Font_Merger_GUI.is_collection",
+            side_effect=lambda path: path.suffix.casefold() == ".ttc",
+        ), patch(
+            "Font_Merger_GUI.collection_faces",
+            side_effect=[
+                [face(0, "Zeta", "Regular")],
+                [face(0, "Alpha", "Regular"), face(1, "Alpha", "Bold")],
+            ],
+        ):
+            results = installed_font_faces((regular, collection))
+
+        self.assertEqual(
+            [(item.family, item.style) for item in results],
+            [("Alpha", "Bold"), ("Alpha", "Regular"), ("Zeta", "Regular")],
+        )
+        self.assertEqual(results[0].source, f"{collection}#1")
+        self.assertEqual(results[1].source, f"{collection}#0")
+        self.assertEqual(results[2].source, str(regular))
+
+    def test_installed_font_search_matches_family_style_file_and_multiple_terms(self):
+        faces = (
+            InstalledFontFace(
+                "C:/Fonts/NotoSans-Medium.ttf",
+                Path("C:/Fonts/NotoSans-Medium.ttf"),
+                "Noto Sans CJK SC",
+                "Medium",
+            ),
+            InstalledFontFace(
+                "C:/Fonts/consola.ttf",
+                Path("C:/Fonts/consola.ttf"),
+                "Consolas",
+                "Regular",
+            ),
+        )
+
+        self.assertEqual(filter_installed_font_faces(faces, "noto medium"), faces[:1])
+        self.assertEqual(filter_installed_font_faces(faces, "CONsola.ttf"), faces[1:])
+        self.assertEqual(filter_installed_font_faces(faces, "missing"), ())
+        self.assertIs(filter_installed_font_faces(faces, ""), faces)
+
     def test_windows_font_directories_include_system_and_user_locations(self):
         environment = {
             "WINDIR": "D:/Windows",
@@ -96,6 +148,21 @@ class GUIFontTests(TestCase):
 
         gui._on_mousewheel.assert_called_once_with(event)
         self.assertEqual(result, "break")
+
+    def test_add_font_paths_keeps_preselected_collection_face(self):
+        gui = Mock()
+        gui.fonts = Mock()
+        path = Path("C:/Windows/Fonts/family.ttc")
+        source = FontSource(path, 2, True)
+
+        with patch("Font_Merger_GUI.parse_source", return_value=source), patch(
+            "Font_Merger_GUI.is_collection", return_value=True
+        ), patch("Font_Merger_GUI.collection_faces") as collection_faces:
+            FontMergerGUI._add_font_paths(gui, [f"{path}#2"])
+
+        collection_faces.assert_not_called()
+        gui.fonts.insert.assert_called_once_with(tk.END, f"{path}#2")
+        gui.update_font_state.assert_called_once_with()
 
     def test_nerd_symbol_ranges_are_identified_for_removal(self):
         for codepoint in (

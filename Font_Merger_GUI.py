@@ -12,6 +12,7 @@ import sys
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
+from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Any
@@ -34,6 +35,22 @@ GUI_FONT_FILENAME = "JetBrainsLxgwNerdMono-Regular.ttf"
 GUI_FONT_FALLBACK = "Segoe UI"
 GUI_FONT_RELATIVE_PATH = Path("assets") / "fonts" / GUI_FONT_FILENAME
 FONT_FILE_SUFFIXES = {".ttf", ".otf", ".ttc", ".otc"}
+
+
+@dataclass(frozen=True)
+class InstalledFontFace:
+    source: str
+    path: Path
+    family: str
+    style: str
+
+    @property
+    def display_name(self) -> str:
+        return f"{self.family} — {self.style}    [{self.path.name}]"
+
+    @property
+    def search_text(self) -> str:
+        return " ".join((self.family, self.style, self.path.name)).casefold()
 
 
 def windows_font_directories() -> tuple[Path, ...]:
@@ -71,6 +88,48 @@ def installed_font_files(
             continue
     return tuple(
         sorted(paths.values(), key=lambda path: (path.name.casefold(), str(path)))
+    )
+
+
+def installed_font_faces(
+    paths: tuple[Path, ...] | None = None,
+) -> tuple[InstalledFontFace, ...]:
+    """Read searchable family/style records from installed font files."""
+    records: list[InstalledFontFace] = []
+    for path in installed_font_files() if paths is None else paths:
+        try:
+            collection = is_collection(path)
+            for face in collection_faces(path):
+                source = f"{path}#{face.index}" if collection else str(path)
+                records.append(
+                    InstalledFontFace(source, path, face.family, face.style)
+                )
+        except Exception:
+            # One broken or unsupported installed font should not prevent the
+            # picker from listing every other usable font.
+            continue
+    return tuple(
+        sorted(
+            records,
+            key=lambda item: (
+                item.family.casefold(),
+                item.style.casefold(),
+                item.path.name.casefold(),
+                item.source,
+            ),
+        )
+    )
+
+
+def filter_installed_font_faces(
+    faces: tuple[InstalledFontFace, ...], query: str
+) -> tuple[InstalledFontFace, ...]:
+    """Filter installed faces using case-insensitive, order-independent terms."""
+    terms = tuple(part.casefold() for part in query.split() if part)
+    if not terms:
+        return faces
+    return tuple(
+        face for face in faces if all(term in face.search_text for term in terms)
     )
 
 
@@ -154,8 +213,11 @@ TEXT = {
         "add_fonts": "＋ 添加字体",
         "system_fonts": "系统字体…",
         "system_fonts_title": "选择已安装字体",
-        "system_fonts_desc": "系统字体和当前用户字体；可用 Ctrl / Shift 多选。",
+        "system_fonts_desc": "按家族名、样式或文件名搜索；可用 Ctrl / Shift 多选。",
         "system_fonts_empty": "没有找到可用的 TTF / OTF / TTC / OTC 字体。",
+        "system_fonts_search": "搜索字体",
+        "system_fonts_loading": "正在读取已安装字体…",
+        "system_fonts_results": "{count} 个匹配字体",
         "add_selected": "添加所选",
         "remove_selected": "移除所选",
         "move_up": "↑ 上移",
@@ -247,8 +309,11 @@ TEXT = {
         "add_fonts": "＋ 加入字型",
         "system_fonts": "系統字型…",
         "system_fonts_title": "選擇已安裝字型",
-        "system_fonts_desc": "系統字型與目前使用者字型；可用 Ctrl / Shift 多選。",
+        "system_fonts_desc": "依家族名稱、樣式或檔名搜尋；可用 Ctrl / Shift 多選。",
         "system_fonts_empty": "找不到可用的 TTF / OTF / TTC / OTC 字型。",
+        "system_fonts_search": "搜尋字型",
+        "system_fonts_loading": "正在讀取已安裝字型…",
+        "system_fonts_results": "{count} 個符合字型",
         "add_selected": "加入所選",
         "remove_selected": "移除所選",
         "move_up": "↑ 上移",
@@ -340,8 +405,11 @@ TEXT = {
         "add_fonts": "+ Add fonts",
         "system_fonts": "System fonts…",
         "system_fonts_title": "Choose installed fonts",
-        "system_fonts_desc": "System and per-user fonts; use Ctrl / Shift for multiple selection.",
+        "system_fonts_desc": "Search by family, style, or file name; use Ctrl / Shift for multiple selection.",
         "system_fonts_empty": "No supported TTF / OTF / TTC / OTC fonts were found.",
+        "system_fonts_search": "Search fonts",
+        "system_fonts_loading": "Reading installed fonts…",
+        "system_fonts_results": "{count} matching fonts",
         "add_selected": "Add selected",
         "remove_selected": "Remove selected",
         "move_up": "↑ Move up",
@@ -1397,10 +1465,11 @@ class FontMergerGUI:
     def _add_font_paths(self, paths: list[str]) -> None:
         """Validate paths, handle collections, and append them to the input list."""
         for value in paths:
-            path = Path(value)
-            label = str(path)
             try:
-                if is_collection(path):
+                source = parse_source(value)
+                path = source.path
+                label = source.label if source.face_explicit else str(path)
+                if is_collection(path) and not source.face_explicit:
                     faces = collection_faces(path)
                     if len(faces) > 1:
                         choices = "\n".join(
@@ -1428,7 +1497,7 @@ class FontMergerGUI:
         self.update_font_state()
 
     def add_system_fonts(self) -> None:
-        """Choose installed fonts without using the Windows Fonts shell folder."""
+        """Search installed font faces without using the Windows Fonts shell folder."""
         paths = installed_font_files()
         if not paths:
             messagebox.showinfo(
@@ -1444,7 +1513,7 @@ class FontMergerGUI:
         dialog.geometry("760x520")
         dialog.minsize(560, 360)
         dialog.columnconfigure(0, weight=1)
-        dialog.rowconfigure(1, weight=1)
+        dialog.rowconfigure(2, weight=1)
 
         ttk.Label(
             dialog,
@@ -1452,8 +1521,22 @@ class FontMergerGUI:
             padding=(12, 10, 12, 6),
         ).grid(row=0, column=0, sticky="ew")
 
+        search_row = ttk.Frame(dialog, padding=(12, 0, 12, 8))
+        search_row.grid(row=1, column=0, sticky="ew")
+        search_row.columnconfigure(1, weight=1)
+        ttk.Label(search_row, text=self.t("system_fonts_search")).grid(
+            row=0, column=0, sticky="w", padx=(0, 8)
+        )
+        search = tk.StringVar()
+        search_entry = ttk.Entry(search_row, textvariable=search, state=tk.DISABLED)
+        search_entry.grid(row=0, column=1, sticky="ew")
+        result_count = tk.StringVar(value=self.t("system_fonts_loading"))
+        ttk.Label(search_row, textvariable=result_count).grid(
+            row=0, column=2, sticky="e", padx=(10, 0)
+        )
+
         body = ttk.Frame(dialog, padding=(12, 0, 12, 8))
-        body.grid(row=1, column=0, sticky="nsew")
+        body.grid(row=2, column=0, sticky="nsew")
         body.columnconfigure(0, weight=1)
         body.rowconfigure(0, weight=1)
         picker = tk.Listbox(body, selectmode=tk.EXTENDED, activestyle="none")
@@ -1461,23 +1544,75 @@ class FontMergerGUI:
         scrollbar = ttk.Scrollbar(body, orient=tk.VERTICAL, command=picker.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
         picker.configure(yscrollcommand=scrollbar.set)
-        for path in paths:
-            picker.insert(tk.END, f"{path.name}    [{path.parent}]")
 
         chosen: list[str] = []
+        faces: tuple[InstalledFontFace, ...] = ()
+        visible_faces: tuple[InstalledFontFace, ...] = ()
+
+        def apply_filter(*_args: object) -> None:
+            nonlocal visible_faces
+            visible_faces = filter_installed_font_faces(faces, search.get())
+            picker.delete(0, tk.END)
+            for face in visible_faces:
+                picker.insert(tk.END, face.display_name)
+            result_count.set(self.t("system_fonts_results", count=len(visible_faces)))
+
+        def selection_changed(_event: tk.Event | None = None) -> None:
+            add_button.configure(
+                state=tk.NORMAL if picker.curselection() else tk.DISABLED
+            )
 
         def accept() -> None:
-            chosen.extend(str(paths[index]) for index in picker.curselection())
+            chosen.extend(visible_faces[index].source for index in picker.curselection())
+            if not chosen:
+                return
             dialog.destroy()
 
         actions = ttk.Frame(dialog, padding=(12, 0, 12, 12))
-        actions.grid(row=2, column=0, sticky="e")
-        ttk.Button(actions, text=self.t("add_selected"), command=accept).pack()
+        actions.grid(row=3, column=0, sticky="e")
+        add_button = ttk.Button(
+            actions,
+            text=self.t("add_selected"),
+            command=accept,
+            state=tk.DISABLED,
+        )
+        add_button.pack()
+        search.trace_add("write", apply_filter)
+        picker.bind("<<ListboxSelect>>", selection_changed)
         picker.bind("<Double-Button-1>", lambda _event: accept())
         dialog.bind("<Escape>", lambda _event: dialog.destroy())
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
         dialog.grab_set()
-        picker.focus_set()
+
+        scan_results: queue.Queue[tuple[InstalledFontFace, ...]] = queue.Queue()
+
+        def scan() -> None:
+            scan_results.put(installed_font_faces(paths))
+
+        def poll_scan() -> None:
+            nonlocal faces
+            try:
+                faces = scan_results.get_nowait()
+            except queue.Empty:
+                if dialog.winfo_exists():
+                    dialog.after(50, poll_scan)
+                return
+            if not dialog.winfo_exists():
+                return
+            if not faces:
+                dialog.destroy()
+                messagebox.showinfo(
+                    self.t("system_fonts_title"),
+                    self.t("system_fonts_empty"),
+                    parent=self.root,
+                )
+                return
+            search_entry.configure(state=tk.NORMAL)
+            apply_filter()
+            search_entry.focus_set()
+
+        threading.Thread(target=scan, daemon=True).start()
+        dialog.after(50, poll_scan)
         self.root.wait_window(dialog)
         if chosen:
             self._add_font_paths(chosen)

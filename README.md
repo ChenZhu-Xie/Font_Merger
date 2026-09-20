@@ -83,7 +83,7 @@
 
 #### GUI（Windows 推荐）
 
-下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体、选择输出位置，再点击“开始合并”即可。界面支持简体中文、繁體中文和 English。若 Windows 文件选择器不显示 `C:\Windows\Fonts`，可点击“系统字体…”直接选择系统级或当前用户安装的字体。
+下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体、选择输出位置，再点击“开始合并”即可。界面支持简体中文、繁體中文和 English。若 Windows 文件选择器不显示 `C:\Windows\Fonts`，可点击与“添加字体”并列的“系统字体…”，按家族名、样式或文件名搜索系统级和当前用户安装的字体，并用 Ctrl / Shift 多选；TTC / OTC 会直接列出其中的各个字体。
 
 默认设置适合大多数用户：自动识别西文与 CJK 字体，让西文字体覆盖英文等重复字符，同时保留中文字体的其余字符，并以中文字体作为显示基准，避免中文笔画因缩放而变粗。程序还会自动匹配可实现的字重；例如静态西文字体为 350、中文可变字体支持 `wght=100..900` 时，会直接生成双方均为 350 的静态字体。手动填写 `wght=350` 或固定实例时，GUI 会自动停用与单一字重冲突的多字重选项。两款字体的添加顺序不影响识别结果。
 
@@ -255,7 +255,7 @@ Get the file for your system from [Releases](https://github.com/ChenZhu-Xie/Font
 
 #### GUI (recommended on Windows)
 
-Download and extract the GUI archive, then double-click `font-merger-gui-windows-x64.exe`. Add fonts, choose an output path, and click “Merge fonts.” The interface supports Simplified Chinese, Traditional Chinese, and English. If the Windows file picker does not show `C:\Windows\Fonts`, use “System fonts…” to select system-wide or per-user installed fonts directly.
+Download and extract the GUI archive, then double-click `font-merger-gui-windows-x64.exe`. Add fonts, choose an output path, and click “Merge fonts.” The interface supports Simplified Chinese, Traditional Chinese, and English. If the Windows file picker does not show `C:\Windows\Fonts`, use “System fonts…” beside “Add fonts” to search system-wide and per-user fonts by family, style, or file name and select multiple entries with Ctrl / Shift. Each face in a TTC / OTC collection is listed directly.
 
 The defaults suit most users. Font Merger detects Latin and CJK fonts automatically, lets the Latin font replace duplicate Latin glyphs, preserves the remaining Chinese glyphs, and uses the Chinese font as the display baseline so scaling does not make Chinese strokes heavier. It also matches realizable weights automatically; for example, a static Latin face at 350 makes a CJK variable font with `wght=100..900` instantiate at 350. When `wght=350` or a named instance is entered manually, the GUI disables conflicting multi-weight options automatically. The order of a Latin/CJK pair does not affect detection.
 
@@ -427,7 +427,7 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 
 #### GUI（Windows 推薦）
 
-下載圖形介面壓縮檔，解壓縮後按兩下 `font-merger-gui-windows-x64.exe`。加入字型、選擇輸出位置，再按一下「開始合併字型」即可。介面支援簡體中文、繁體中文與 English。若 Windows 檔案選擇器未顯示 `C:\Windows\Fonts`，可按一下「系統字型…」直接選擇系統層級或目前使用者安裝的字型。
+下載圖形介面壓縮檔，解壓縮後按兩下 `font-merger-gui-windows-x64.exe`。加入字型、選擇輸出位置，再按一下「開始合併字型」即可。介面支援簡體中文、繁體中文與 English。若 Windows 檔案選擇器未顯示 `C:\Windows\Fonts`，可按一下與「加入字型」並列的「系統字型…」，依家族名稱、樣式或檔名搜尋系統層級和目前使用者安裝的字型，並用 Ctrl / Shift 多選；TTC / OTC 會直接列出其中各個字型。
 
 預設設定適合大多數使用者：自動辨識西文與 CJK 字型，讓西文字型覆蓋英文等重複字元，同時保留中文字型的其餘字元，並以中文字型作為顯示基準，避免中文筆畫因縮放而變粗。程式也會自動配對可實現的字重；例如靜態西文字型為 350、中文可變字型支援 `wght=100..900` 時，會直接產生雙方均為 350 的靜態字型。手動填寫 `wght=350` 或固定實例時，GUI 會自動停用與單一字重衝突的多字重選項。兩款字型的加入順序不影響辨識結果。
 
