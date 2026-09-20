@@ -194,6 +194,17 @@ font-merger "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" -o "merged.ttf"
 
 GUI 使用 Python 标准库 Tkinter / ttk，字体处理使用 fontTools，并由 PyInstaller 打包为单文件程序。合并任务在后台线程运行；耗时主要取决于字体大小、字符数量和输出字重数量。
 
+Windows 本地构建与测试：
+
+```powershell
+python -m pip install -e ".[build]"
+.\build-windows.ps1
+.\run-gui-debug.ps1
+.\run-gui-release.ps1
+```
+
+Release 单文件输出到 `dist/local-release`；带控制台与 PyInstaller 调试信息的 onedir GUI 输出到 `dist/local-debug`。启动脚本可加 `-Build` 强制重新构建。
+
 字体合并不会改变源字体许可证。分享合并后的字体前，请确认所有源字体都允许这样使用。
 
 同类工具调研与技术说明见 [docs/research.md](docs/research.md)。
@@ -366,6 +377,17 @@ font-merger "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" -o "merged.ttf"
 
 The GUI uses Python's standard Tkinter/ttk library, font processing uses fontTools, and PyInstaller produces standalone executables. Merging runs in a background thread; performance mainly depends on font size, glyph count, and the number of output weights.
 
+For local Windows builds and testing:
+
+```powershell
+python -m pip install -e ".[build]"
+.\build-windows.ps1
+.\run-gui-debug.ps1
+.\run-gui-release.ps1
+```
+
+Release one-file executables are written to `dist/local-release`. The onedir GUI with a console and PyInstaller diagnostics is written to `dist/local-debug`. Add `-Build` to either launcher to force a rebuild.
+
 Merging does not change the licenses of the source fonts. Before sharing a merged font, confirm that every source font permits that use.
 
 See [docs/research.md](docs/research.md) for related-tool research and technical notes.
@@ -537,6 +559,17 @@ font-merger "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" -o "merged.ttf"
 ```
 
 GUI 使用 Python 標準函式庫 Tkinter / ttk，字型處理使用 fontTools，並由 PyInstaller 打包為單一執行檔。合併工作會在背景執行緒中執行；耗時主要取決於字型大小、字元數量與輸出字重數量。
+
+Windows 本機建置與測試：
+
+```powershell
+python -m pip install -e ".[build]"
+.\build-windows.ps1
+.\run-gui-debug.ps1
+.\run-gui-release.ps1
+```
+
+Release 單一執行檔會輸出至 `dist/local-release`；含主控台與 PyInstaller 偵錯資訊的 onedir GUI 會輸出至 `dist/local-debug`。啟動腳本可加上 `-Build` 強制重新建置。
 
 字型合併不會改變來源字型的授權條款。分享合併後的字型前，請確認所有來源字型都允許這種用途。
 
