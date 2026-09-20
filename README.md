@@ -53,7 +53,7 @@
 - 支持微软雅黑等 `.ttc` 字体，无须预先拆分。
 - 自动修改字体内部名称，避免与原字体冲突。
 - 提供 Windows、Linux、macOS 单文件程序，无须安装 Python。
-- 默认自动生成字体中可用的多个字重，也可以只选择一个字重。
+- 默认根据输入字体自动选择可实现的输出字重；静态字体会约束可变字体，全部输入均为可变字体时才可能一次生成多个字重。
 
 <a id="zh-cn-features"></a>
 
@@ -85,7 +85,11 @@
 
 下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体、选择输出位置，再点击“开始合并”即可。界面支持简体中文、繁體中文和 English。若 Windows 文件选择器不显示 `C:\Windows\Fonts`，可点击与“添加字体”并列的“系统字体…”，按家族名、样式或文件名搜索系统级和当前用户安装的字体，并用 Ctrl / Shift 多选；TTC / OTC 会直接列出其中的各个字体。
 
-默认设置适合大多数用户：自动识别西文与 CJK 字体，让西文字体覆盖英文等重复字符，同时保留中文字体的其余字符，并以中文字体作为显示基准，避免中文笔画因缩放而变粗。程序还会自动匹配可实现的字重；例如静态西文字体为 350、中文可变字体支持 `wght=100..900` 时，会直接生成双方均为 350 的静态字体。手动填写 `wght=350` 或固定实例时，GUI 会自动停用与单一字重冲突的多字重选项。两款字体的添加顺序不影响识别结果。
+默认设置适合大多数用户：当且仅当两个输入能被可靠识别为一款西文字体和一款 CJK 字体时，程序让西文字体覆盖英文等重复字符、由 CJK 字体补充其余字符，并以 CJK 字体的 UPM 和 Hinting 作为显示基准；此时两款字体的添加顺序不影响结果。其他组合（包括三个以上输入）默认按字体列表顺序决定字符优先级和显示基准。
+
+字重默认使用 `auto + nearest`：只要存在静态字体，优先级最高的静态字体就作为字重基准，可变字体在可能时实例化到相同字重。例如静态西文字体为 350、CJK 可变字体支持 `wght=100..900` 时，会生成双方均为 350 的静态输出。全部输入都是可变字体时，程序以可用字重锚点较丰富的字体为基准，优先生成所有输入都能精确实现的字重。最近字重匹配默认不限制最大差值；需要严格匹配时可在高级设置中选择“必须精确匹配”或填写最大字重差。
+
+家族名留空时，程序会用 ` + ` 连接去重后的源字体家族名；默认输出文件为当前目录的 `merged.ttf`，仅当实际生成多个字重时才在文件名后追加样式名。手动填写 `wght=350` 或固定实例会明确指定单一字重，GUI 因而自动恢复 `weights=auto`、清空并停用冲突的多字重设置。
 
 <a id="zh-cn-cli"></a>
 
@@ -97,7 +101,7 @@
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
-命令行默认使用相同的推荐策略。合并其他字体或三个以上字体时，则按输入顺序决定字符优先级。
+命令行使用与 GUI 相同的默认策略：`--priority auto`、`--hinting-source auto`、`--weights auto`、`--weight-match nearest`，最大字重差不设上限。未写 `--family` 时，输出家族名由去重后的源家族名以 ` + ` 连接；未写 `-o` 时输出文件名基准为 `merged.ttf`。合并无法识别为西文 + CJK 双字体的组合或三个以上字体时，字符优先级按输入顺序。
 
 <a id="zh-cn-yahei"></a>
 
@@ -135,8 +139,9 @@ TTC / OTC 是字体集合。先查看其中的字体：
 
 默认自动规则：
 
-- 静态字体 + 可变字体：按静态字体的实际字重自动匹配 `wght`，如静态 350 自动匹配可变 350。
-- 两款可变字体：生成双方均可实现的命名字重。
+- 至少一个输入为静态字体：按字符优先级选取第一款静态字体作为字重基准；通常只生成它的实际字重，并让可变字体匹配该 `wght`，如静态 350 自动匹配可变 350。
+- 全部输入均为可变字体：以可用字重锚点最多的输入为基准，优先生成所有输入都能精确实现的命名字重；若没有共同锚点，则按默认的 `nearest` 规则使用各字体最接近的字重。
+- `nearest` 默认不限制最大字重差。可用 `--weight-match exact` 要求每个输入精确实现目标字重，或用 `--max-weight-gap N` 限制允许的差值。
 - Regular、Bold 分别合并时保持相同的家族名，安装后即可自动切换真正的粗体。
 - DemiLight、Medium 等扩展字重也使用相同的家族名，同时在样式名和 `usWeightClass` 中保留实际字重，便于现代 Windows、CSS 等按字重选择。
 - 这是面向现代字重选择的命名方式；只识别传统 Regular/Bold/Italic/Bold Italic 四成员家族的旧程序，可能无法完整列出扩展字重。
@@ -148,7 +153,7 @@ TTC / OTC 是字体集合。先查看其中的字体：
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
 
-`face #0` 只是 TTC / OTC 的字体序号，并非字重。需要手动覆盖时可写 `--axis wght=350`；默认情况下通常不必填写。
+`face #0` 只是 TTC / OTC 的字体序号，并非字重。需要手动覆盖时可写 `--axis wght=350`；默认情况下通常不必填写。`--style`、`--instance` 或 `--axis wght=...` 都表示只生成一个字重，不能再同时指定非 `auto` 的 `--weights`。
 
 只需一个字重时明确指定实例：
 
@@ -156,7 +161,7 @@ TTC / OTC 是字体集合。先查看其中的字体：
 ./font-merger-windows-x64.exe "consolab.ttf" "NotoSansSC-VF.ttf" --instance Bold --family "Consolas Noto Sans SC" -o "Consolas-Noto-Bold.ttf"
 ```
 
-需要更多控制时，可用 `--weights latin`、`cjk`、`union`、`intersection` 或 `300,400,700`；`--weight-match exact` 可禁止使用相近字重替代。
+需要更多控制时，可用 `--weights latin`、`cjk`、`union`、`intersection` 或 `300,400,700`。多个输出会基于 `-o` 指定的文件名自动追加 Thin、Regular、Bold 等样式名。
 
 <a id="zh-cn-install"></a>
 
@@ -236,7 +241,7 @@ For example, it combines the single-width Latin glyphs of Inconsolata with the d
 - Uses `.ttc` fonts such as Microsoft YaHei directly, without extracting them first.
 - Renames the merged font internally to avoid conflicts with its source fonts.
 - Provides standalone Windows, Linux, and macOS programs; Python is not required.
-- Generates all available weights by default, or a single selected weight when requested.
+- Selects realizable output weights automatically: static inputs constrain variable fonts, while an all-variable set may produce multiple weights in one run.
 
 <a id="en-features"></a>
 
@@ -268,7 +273,11 @@ Get the file for your system from [Releases](https://github.com/ChenZhu-Xie/Font
 
 Download and extract the GUI archive, then double-click `font-merger-gui-windows-x64.exe`. Add fonts, choose an output path, and click “Merge fonts.” The interface supports Simplified Chinese, Traditional Chinese, and English. If the Windows file picker does not show `C:\Windows\Fonts`, use “System fonts…” beside “Add fonts” to search system-wide and per-user fonts by family, style, or file name and select multiple entries with Ctrl / Shift. Each face in a TTC / OTC collection is listed directly.
 
-The defaults suit most users. Font Merger detects Latin and CJK fonts automatically, lets the Latin font replace duplicate Latin glyphs, preserves the remaining Chinese glyphs, and uses the Chinese font as the display baseline so scaling does not make Chinese strokes heavier. It also matches realizable weights automatically; for example, a static Latin face at 350 makes a CJK variable font with `wght=100..900` instantiate at 350. When `wght=350` or a named instance is entered manually, the GUI disables conflicting multi-weight options automatically. The order of a Latin/CJK pair does not affect detection.
+The defaults suit most users. If and only if two inputs can be identified reliably as one Latin and one CJK font, the Latin font supplies overlapping characters, the CJK font supplies the rest, and the CJK font provides the UPM and hinting baseline. Input order does not matter for that detected pair. Other combinations, including three or more inputs, use font-list order for glyph priority and the display baseline.
+
+The default weight policy is `auto + nearest`. If any input is static, the highest-priority static font becomes the weight reference and variable fonts are instantiated at the same weight when possible. For example, a static Latin face at 350 and a CJK variable font supporting `wght=100..900` produce a static 350 output. When every input is variable, the font with the richest set of useful weight anchors becomes the reference, with weights that every input can realize exactly preferred. Nearest matching has no maximum gap by default; choose “Require an exact match” or enter a maximum weight gap in Advanced settings when stricter matching is required.
+
+If Family is blank, unique source family names are joined with ` + `. The default output is `merged.ttf` in the current directory, and a style suffix is added only when the run actually generates multiple weights. Entering `wght=350` or a named instance explicitly requests one weight, so the GUI resets `weights` to `auto`, clears, and disables the conflicting multi-weight controls.
 
 <a id="en-cli"></a>
 
@@ -280,7 +289,7 @@ Put the program and fonts in one folder, open a terminal there, and run:
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
-The CLI uses the same recommended defaults. For other combinations or three or more fonts, input order determines character priority.
+The CLI uses the same defaults as the GUI: `--priority auto`, `--hinting-source auto`, `--weights auto`, and `--weight-match nearest`, with no maximum weight gap. Without `--family`, unique source family names are joined with ` + `; without `-o`, the output base name is `merged.ttf`. Combinations that are not detected as a Latin/CJK pair, and runs with three or more fonts, use input order for glyph priority.
 
 <a id="en-yahei"></a>
 
@@ -318,8 +327,9 @@ You can also choose `cjk`, `none`, or an input font number such as `--hinting-so
 
 Default automatic rules:
 
-- Static + variable: the static face's actual weight selects the matching `wght`, such as static 350 selecting variable 350.
-- Two variable fonts: generate named weights that both inputs can realize.
+- At least one static input: the first static font in glyph-priority order becomes the weight reference. Normally its actual weight is the sole target, and variable fonts match that `wght`, such as static 350 selecting variable 350.
+- All inputs variable: the input exposing the most useful weight anchors becomes the reference. Anchors that every input can realize exactly are preferred; if there are no shared anchors, each font uses its nearest weight under the default `nearest` rule.
+- `nearest` has no maximum gap by default. Use `--weight-match exact` to require every input to realize a target exactly, or `--max-weight-gap N` to limit the allowed difference.
 - When Regular and Bold are merged separately, keep the same family name so applications can select the real Bold automatically.
 - Extended weights such as DemiLight and Medium also use the same family name while retaining their actual style name and `usWeightClass`, allowing modern Windows and CSS clients to select by weight.
 - This naming favors modern weight selection. Legacy applications limited to four-member Regular/Bold/Italic/Bold Italic families may not enumerate every extended weight correctly.
@@ -331,7 +341,7 @@ List the instances in a font with `--list`:
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
 
-`face #0` is only the font index in a TTC/OTC collection, not a weight. Use `--axis wght=350` to override automatic matching; it is normally unnecessary.
+`face #0` is only the font index in a TTC/OTC collection, not a weight. Use `--axis wght=350` to override automatic matching; it is normally unnecessary. `--style`, `--instance`, and `--axis wght=...` each request a single output weight and therefore cannot be combined with a non-`auto` `--weights` value.
 
 To generate only one weight, select its instance explicitly:
 
@@ -339,7 +349,7 @@ To generate only one weight, select its instance explicitly:
 ./font-merger-windows-x64.exe "consolab.ttf" "NotoSansSC-VF.ttf" --instance Bold --family "Consolas Noto Sans SC" -o "Consolas-Noto-Bold.ttf"
 ```
 
-For more control, use `--weights latin`, `cjk`, `union`, `intersection`, or a list such as `300,400,700`. Use `--weight-match exact` to disable nearest-weight substitution.
+For more control, use `--weights latin`, `cjk`, `union`, `intersection`, or a list such as `300,400,700`. Multiple outputs automatically receive Thin, Regular, Bold, and similar style suffixes based on the file name supplied with `-o`.
 
 <a id="en-install"></a>
 
@@ -419,7 +429,7 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 - 可直接使用微軟雅黑等 `.ttc` 字型，無須預先拆分。
 - 自動修改字型內部名稱，避免與來源字型衝突。
 - 提供 Windows、Linux、macOS 單一執行檔，無須安裝 Python。
-- 預設自動產生字型中可用的多個字重，也可以只選擇一個字重。
+- 預設依輸入字型自動選擇可實現的輸出字重；靜態字型會約束可變字型，所有輸入皆為可變字型時才可能一次產生多個字重。
 
 <a id="zh-tw-features"></a>
 
@@ -451,7 +461,11 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 
 下載圖形介面壓縮檔，解壓縮後按兩下 `font-merger-gui-windows-x64.exe`。加入字型、選擇輸出位置，再按一下「開始合併字型」即可。介面支援簡體中文、繁體中文與 English。若 Windows 檔案選擇器未顯示 `C:\Windows\Fonts`，可按一下與「加入字型」並列的「系統字型…」，依家族名稱、樣式或檔名搜尋系統層級和目前使用者安裝的字型，並用 Ctrl / Shift 多選；TTC / OTC 會直接列出其中各個字型。
 
-預設設定適合大多數使用者：自動辨識西文與 CJK 字型，讓西文字型覆蓋英文等重複字元，同時保留中文字型的其餘字元，並以中文字型作為顯示基準，避免中文筆畫因縮放而變粗。程式也會自動配對可實現的字重；例如靜態西文字型為 350、中文可變字型支援 `wght=100..900` 時，會直接產生雙方均為 350 的靜態字型。手動填寫 `wght=350` 或固定實例時，GUI 會自動停用與單一字重衝突的多字重選項。兩款字型的加入順序不影響辨識結果。
+預設設定適合大多數使用者：僅當兩個輸入能可靠辨識為一款西文字型與一款 CJK 字型時，程式才會讓西文字型提供英文等重複字元、由 CJK 字型補充其餘字元，並以 CJK 字型的 UPM 與 Hinting 作為顯示基準；此時兩款字型的加入順序不影響結果。其他組合（包括三個以上輸入）預設依字型清單順序決定字元優先順序與顯示基準。
+
+字重預設使用 `auto + nearest`：只要存在靜態字型，優先順序最高的靜態字型就會作為字重基準，可變字型則在可行時實例化為相同字重。例如靜態西文字型為 350、CJK 可變字型支援 `wght=100..900` 時，會產生雙方均為 350 的靜態輸出。所有輸入皆為可變字型時，程式以可用字重錨點較豐富的字型為基準，優先產生所有輸入都能精確實現的字重。最近字重配對預設不限制最大差值；需要嚴格配對時，可在進階設定中選擇「必須精確配對」或填寫最大字重差。
+
+家族名稱留空時，程式會以 ` + ` 連接去重後的來源字型家族名稱；預設輸出檔案是目前目錄的 `merged.ttf`，只有實際產生多個字重時才會在檔名後加入樣式名稱。手動填寫 `wght=350` 或固定實例會明確指定單一字重，因此 GUI 會自動恢復 `weights=auto`、清空並停用衝突的多字重設定。
 
 <a id="zh-tw-cli"></a>
 
@@ -463,7 +477,7 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
-命令列預設使用相同的推薦策略。合併其他字型或三個以上字型時，則依輸入順序決定字元優先順序。
+命令列使用與 GUI 相同的預設策略：`--priority auto`、`--hinting-source auto`、`--weights auto`、`--weight-match nearest`，且最大字重差沒有上限。未指定 `--family` 時，輸出家族名稱由去重後的來源家族名稱以 ` + ` 連接；未指定 `-o` 時，輸出檔名基準為 `merged.ttf`。無法辨識為西文 + CJK 雙字型的組合或三個以上字型，會依輸入順序決定字元優先順序。
 
 <a id="zh-tw-yahei"></a>
 
@@ -501,8 +515,9 @@ TTC / OTC 是字型集合。先查看其中的字型：
 
 預設自動規則：
 
-- 靜態字型 + 可變字型：依靜態字型的實際字重自動配對 `wght`，例如靜態 350 自動配對可變 350。
-- 兩款可變字型：產生雙方均可實現的命名字重。
+- 至少一個輸入為靜態字型：依字元優先順序選取第一款靜態字型作為字重基準；通常只產生其實際字重，並讓可變字型配對該 `wght`，例如靜態 350 自動配對可變 350。
+- 所有輸入皆為可變字型：以可用字重錨點最多的輸入為基準，優先產生所有輸入都能精確實現的命名字重；若沒有共同錨點，則依預設的 `nearest` 規則使用各字型最接近的字重。
+- `nearest` 預設不限制最大字重差。可用 `--weight-match exact` 要求每個輸入精確實現目標字重，或用 `--max-weight-gap N` 限制允許的差值。
 - Regular、Bold 分別合併時保持相同家族名稱，安裝後即可自動切換真正的粗體。
 - DemiLight、Medium 等延伸字重也使用相同家族名稱，同時在樣式名稱與 `usWeightClass` 中保留實際字重，方便現代 Windows、CSS 等依字重選擇。
 - 這是偏向現代字重選擇的命名方式；只支援傳統 Regular/Bold/Italic/Bold Italic 四成員家族的舊程式，可能無法完整列出延伸字重。
@@ -514,7 +529,7 @@ TTC / OTC 是字型集合。先查看其中的字型：
 ./font-merger-windows-x64.exe --list "C:\Windows\Fonts\NotoSansSC-VF.ttf"
 ```
 
-`face #0` 只是 TTC / OTC 的字型編號，並非字重。需要手動覆蓋時可寫 `--axis wght=350`；預設情況通常不必填寫。
+`face #0` 只是 TTC / OTC 的字型編號，並非字重。需要手動覆蓋時可寫 `--axis wght=350`；預設情況通常不必填寫。`--style`、`--instance` 或 `--axis wght=...` 都表示只產生一個字重，不能再同時指定非 `auto` 的 `--weights`。
 
 只需要一個字重時，請明確指定實例：
 
@@ -522,7 +537,7 @@ TTC / OTC 是字型集合。先查看其中的字型：
 ./font-merger-windows-x64.exe "consolab.ttf" "NotoSansSC-VF.ttf" --instance Bold --family "Consolas Noto Sans SC" -o "Consolas-Noto-Bold.ttf"
 ```
 
-需要更多控制時，可使用 `--weights latin`、`cjk`、`union`、`intersection` 或 `300,400,700`；`--weight-match exact` 可停用相近字重替代。
+需要更多控制時，可使用 `--weights latin`、`cjk`、`union`、`intersection` 或 `300,400,700`。多個輸出會依 `-o` 指定的檔名自動加入 Thin、Regular、Bold 等樣式名稱。
 
 <a id="zh-tw-install"></a>
 
