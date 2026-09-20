@@ -13,12 +13,14 @@ from Font_Merger import (
     InstanceInfo,
     SourceInfo,
     collection_faces,
+    legacy_names,
     merge_font_family,
     merge_fonts,
     main,
     parse_source,
     plan_weights,
     resolve_hinting_source,
+    style_flags,
     variable_details,
 )
 
@@ -125,6 +127,28 @@ class FontMergerTests(TestCase):
         self.assertEqual([weight for weight, _mapping in plan], [350])
         self.assertEqual(plan[0][1], (None, 350))
 
+    def test_extended_weights_share_family_without_bold_alias_collisions(self):
+        for style, weight in (
+            ("DemiLight", 350),
+            ("Medium", 500),
+            ("SemiBold", 600),
+            ("ExtraBold", 800),
+            ("Black", 900),
+        ):
+            with self.subTest(style=style):
+                self.assertEqual(
+                    legacy_names("Consolas NotoSans", style, weight),
+                    ("Consolas NotoSans", style),
+                )
+                self.assertFalse(style_flags(style, weight)[0])
+
+        self.assertEqual(
+            legacy_names("Consolas NotoSans", "Bold Italic", 700),
+            ("Consolas NotoSans", "Bold Italic"),
+        )
+        self.assertTrue(style_flags("Bold", 700)[0])
+        self.assertTrue(style_flags("Bold Italic", 700)[0])
+
     def test_automatic_weight_plan_keeps_named_weights_when_all_are_variable(self):
         latin, cjk = self._weight_infos()
         latin = SourceInfo(
@@ -196,7 +220,15 @@ class FontMergerTests(TestCase):
             with TTFont(output) as merged:
                 cmap = merged.getBestCmap()
                 self.assertTrue(expected.issubset(cmap))
+                self.assertEqual(merged["name"].getDebugName(1), "Test Merged")
+                self.assertEqual(merged["name"].getDebugName(2), "Medium")
                 self.assertEqual(merged["name"].getBestFamilyName(), "Test Merged")
+                self.assertEqual(merged["name"].getDebugName(16), "Test Merged")
+                self.assertEqual(merged["name"].getDebugName(17), "Medium")
+                self.assertEqual(merged["OS/2"].usWeightClass, 500)
+                self.assertFalse(merged["OS/2"].fsSelection & (1 << 5))
+                self.assertFalse(merged["OS/2"].fsSelection & (1 << 6))
+                self.assertFalse(merged["head"].macStyle & 1)
                 self.assertEqual(merged["hmtx"][cmap[ord("A")]][0], 500)
                 self.assertIn("vhea", merged)
                 self.assertIn("vmtx", merged)

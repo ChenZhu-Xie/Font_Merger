@@ -801,31 +801,26 @@ def style_flags(style: str, weight: int) -> tuple[bool, bool, bool]:
     lowered = style.casefold()
     italic = "italic" in lowered or "oblique" in lowered
     oblique = "oblique" in lowered
-    bold = weight >= 700 or "bold" in lowered
+    # BOLD is a legacy style-linking flag, not a generic heavy-weight flag.
+    # Reserve it for the actual Bold/Bold Italic face so that SemiBold,
+    # ExtraBold and Black do not all collide as the same legacy Bold style.
+    bold = normalized_style(style) == "bold"
     return bold, italic, oblique
 
 
 def legacy_names(family: str, style: str, weight: int) -> tuple[str, str]:
-    bold, italic, _oblique = style_flags(style, weight)
-    weight_name = re.sub(r"(?i)\b(italic|oblique)\b", "", style).strip(" -")
-    is_regular_weight = normalized_style(style) in {"regular", "normal", "book"}
-    if (is_regular_weight or bold) and normalized_style(style) in {
-        "regular",
-        "normal",
-        "book",
-        "bold",
-    }:
-        if bold and italic:
-            return family, "Bold Italic"
-        if bold:
-            return family, "Bold"
-        if italic:
-            return family, "Italic"
-        return family, "Regular"
-    legacy_family = (
-        family if not weight_name or is_regular_weight else f"{family} {weight_name}"
-    )
-    return legacy_family, "Italic" if italic else "Regular"
+    _bold, italic, _oblique = style_flags(style, weight)
+    normalized = normalized_style(style)
+    if normalized == "bold":
+        return family, "Bold Italic" if italic else "Bold"
+    if normalized in {"regular", "normal", "book"}:
+        return family, "Italic" if italic else "Regular"
+
+    # Share name ID 1 across extended weights so Windows and other clients
+    # that expose the legacy family name do not turn each weight into a
+    # separate visible family. Name IDs 16/17 still carry the same typographic
+    # family plus the precise style, and usWeightClass selects the weight.
+    return family, style
 
 
 def set_font_names(font: TTFont, family: str, style: str, weight: int) -> None:
@@ -872,6 +867,7 @@ def apply_style_metadata(
     font: TTFont, metadata: StyleMetadata, style: str, weight: int
 ) -> None:
     bold, italic, oblique = style_flags(style, weight)
+    regular = normalized_style(style) in {"regular", "normal", "book"}
     if "OS/2" in font:
         os2 = font["OS/2"]
         os2.usWeightClass = max(1, min(1000, int(weight)))
@@ -883,7 +879,7 @@ def apply_style_metadata(
             os2.fsSelection |= 1 << 0
         if bold:
             os2.fsSelection |= 1 << 5
-        if not bold and not italic:
+        if regular and not bold and not italic:
             os2.fsSelection |= 1 << 6
         if oblique and os2.version >= 4:
             os2.fsSelection |= 1 << 9

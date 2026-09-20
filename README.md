@@ -138,6 +138,9 @@ TTC / OTC 是字体集合。先查看其中的字体：
 - 静态字体 + 可变字体：按静态字体的实际字重自动匹配 `wght`，如静态 350 自动匹配可变 350。
 - 两款可变字体：生成双方均可实现的命名字重。
 - Regular、Bold 分别合并时保持相同的家族名，安装后即可自动切换真正的粗体。
+- DemiLight、Medium 等扩展字重也使用相同的家族名，同时在样式名和 `usWeightClass` 中保留实际字重，便于现代 Windows、CSS 等按字重选择。
+- 这是面向现代字重选择的命名方式；只识别传统 Regular/Bold/Italic/Bold Italic 四成员家族的旧程序，可能无法完整列出扩展字重。
+- 若希望 Markdown/CSS 的 `font-weight: bold` 使用真实粗体，建议同时生成并安装 700/Bold；如果只安装 350/500，最终选择 500 还是合成粗体取决于应用自身的字体匹配规则。
 
 可用 `--list` 查看字体包含的实例：
 
@@ -307,6 +310,9 @@ Default automatic rules:
 - Static + variable: the static face's actual weight selects the matching `wght`, such as static 350 selecting variable 350.
 - Two variable fonts: generate named weights that both inputs can realize.
 - When Regular and Bold are merged separately, keep the same family name so applications can select the real Bold automatically.
+- Extended weights such as DemiLight and Medium also use the same family name while retaining their actual style name and `usWeightClass`, allowing modern Windows and CSS clients to select by weight.
+- This naming favors modern weight selection. Legacy applications limited to four-member Regular/Bold/Italic/Bold Italic families may not enumerate every extended weight correctly.
+- To make Markdown/CSS `font-weight: bold` use a real bold face, generate and install 700/Bold as well. If only 350/500 are installed, whether 500 is selected or bold is synthesized depends on the application's font-matching rules.
 
 List the instances in a font with `--list`:
 
@@ -476,6 +482,9 @@ TTC / OTC 是字型集合。先查看其中的字型：
 - 靜態字型 + 可變字型：依靜態字型的實際字重自動配對 `wght`，例如靜態 350 自動配對可變 350。
 - 兩款可變字型：產生雙方均可實現的命名字重。
 - Regular、Bold 分別合併時保持相同家族名稱，安裝後即可自動切換真正的粗體。
+- DemiLight、Medium 等延伸字重也使用相同家族名稱，同時在樣式名稱與 `usWeightClass` 中保留實際字重，方便現代 Windows、CSS 等依字重選擇。
+- 這是偏向現代字重選擇的命名方式；只支援傳統 Regular/Bold/Italic/Bold Italic 四成員家族的舊程式，可能無法完整列出延伸字重。
+- 若希望 Markdown/CSS 的 `font-weight: bold` 使用真正的粗體，建議同時產生並安裝 700/Bold；若只安裝 350/500，最終選擇 500 或合成粗體取決於應用程式本身的字型配對規則。
 
 可用 `--list` 查看字型包含的實例：
 
