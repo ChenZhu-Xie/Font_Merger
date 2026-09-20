@@ -77,7 +77,10 @@
 - Windows：`font-merger-windows-x64.exe`
 - Windows 图形界面：`font-merger-gui-windows-x64.zip`
 - Linux：`font-merger-linux-x64`
-- macOS：`font-merger-macos`
+- macOS（Apple Silicon / arm64）：`font-merger-macos-arm64`
+- macOS（Intel / x64）：`font-merger-macos-x64`
+
+发布页同时提供 `SHA256SUMS.txt`，可用于校验下载文件的 SHA-256。
 
 <a id="zh-cn-gui"></a>
 
@@ -272,7 +275,10 @@ Get the file for your system from [Releases](https://github.com/ChenZhu-Xie/Font
 - Windows: `font-merger-windows-x64.exe`
 - Windows GUI: `font-merger-gui-windows-x64.zip`
 - Linux: `font-merger-linux-x64`
-- macOS: `font-merger-macos`
+- macOS (Apple Silicon / arm64): `font-merger-macos-arm64`
+- macOS (Intel / x64): `font-merger-macos-x64`
+
+Releases also include `SHA256SUMS.txt` for verifying downloaded files with SHA-256.
 
 <a id="en-gui"></a>
 
@@ -467,7 +473,10 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 - Windows：`font-merger-windows-x64.exe`
 - Windows 圖形介面：`font-merger-gui-windows-x64.zip`
 - Linux：`font-merger-linux-x64`
-- macOS：`font-merger-macos`
+- macOS（Apple Silicon / arm64）：`font-merger-macos-arm64`
+- macOS（Intel / x64）：`font-merger-macos-x64`
+
+Release 頁面也會提供 `SHA256SUMS.txt`，可用來驗證下載檔案的 SHA-256。
 
 <a id="zh-tw-gui"></a>
 
