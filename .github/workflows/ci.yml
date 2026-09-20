@@ -45,6 +45,6 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install Ruff
-        run: python -m pip install ruff
+        run: python -m pip install ".[lint]"
       - name: Run Ruff
         run: ruff check .

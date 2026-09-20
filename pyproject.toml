@@ -21,3 +21,12 @@ py-modules = ["Font_Merger", "Font_Merger_GUI"]
 
 [project.optional-dependencies]
 build = ["pyinstaller>=6.10"]
+lint = ["ruff==0.16.8"]
+
+[tool.ruff]
+required-version = "==0.16.8"
+
+[tool.ruff.lint]
+# Ruff 0.16 expanded its default rule set substantially. Keep the project's
+# established lint contract explicit instead of inheriting version-dependent defaults.
+select = ["E4", "E7", "E9", "F"]
