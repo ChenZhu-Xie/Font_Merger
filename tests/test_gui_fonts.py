@@ -149,6 +149,20 @@ class GUIFontTests(TestCase):
         gui._on_mousewheel.assert_called_once_with(event)
         self.assertEqual(result, "break")
 
+    def test_child_window_is_centered_over_parent(self):
+        gui = Mock()
+        gui.root = Mock()
+        gui.root.winfo_rootx.return_value = 480
+        gui.root.winfo_rooty.return_value = 120
+        gui.root.winfo_width.return_value = 960
+        gui.root.winfo_height.return_value = 840
+        dialog = Mock()
+
+        FontMergerGUI._center_child_window(gui, dialog, 760, 520)
+
+        gui.root.update_idletasks.assert_called_once_with()
+        dialog.geometry.assert_called_once_with("760x520+580+280")
+
     def test_add_font_paths_keeps_preselected_collection_face(self):
         gui = Mock()
         gui.fonts = Mock()

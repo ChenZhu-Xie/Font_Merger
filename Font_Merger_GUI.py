@@ -924,6 +924,15 @@ class FontMergerGUI:
         y = max(0, (self.root.winfo_screenheight() - height) // 2)
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _center_child_window(
+        self, window: tk.Toplevel, width: int, height: int
+    ) -> None:
+        """Center a child window over the application's current position."""
+        self.root.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - width) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - height) // 2
+        window.geometry(f"{width}x{height}+{x}+{y}")
+
     @staticmethod
     def _region_frame(
         parent: tk.Misc,
@@ -1508,9 +1517,9 @@ class FontMergerGUI:
             return
 
         dialog = tk.Toplevel(self.root)
+        dialog.withdraw()
         dialog.title(self.t("system_fonts_title"))
         dialog.transient(self.root)
-        dialog.geometry("760x520")
         dialog.minsize(560, 360)
         dialog.columnconfigure(0, weight=1)
         dialog.rowconfigure(2, weight=1)
@@ -1582,6 +1591,8 @@ class FontMergerGUI:
         picker.bind("<Double-Button-1>", lambda _event: accept())
         dialog.bind("<Escape>", lambda _event: dialog.destroy())
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        self._center_child_window(dialog, 760, 520)
+        dialog.deiconify()
         dialog.grab_set()
 
         scan_results: queue.Queue[tuple[InstalledFontFace, ...]] = queue.Queue()
