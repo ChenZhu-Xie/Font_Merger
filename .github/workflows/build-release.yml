@@ -17,14 +17,18 @@ jobs:
         include:
           - os: windows-latest
             artifact: font-merger-windows-x64
-          - os: ubuntu-latest
+          # PyInstaller Linux binaries inherit the build host's glibc baseline.
+          # Pin the runner so ubuntu-latest upgrades do not silently raise it.
+          - os: ubuntu-22.04
             artifact: font-merger-linux-x64
           - os: macos-latest
             artifact: font-merger-macos
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -59,14 +63,14 @@ jobs:
       - name: Smoke test executable (Unix)
         if: runner.os != 'Windows'
         run: "./dist/${{ matrix.artifact }} --version"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: dist/${{ matrix.artifact }}*
           if-no-files-found: error
       - name: Upload Windows GUI package
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: font-merger-gui-windows-x64
           path: dist/font-merger-gui-windows-x64.zip
@@ -77,7 +81,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: release
           merge-multiple: true

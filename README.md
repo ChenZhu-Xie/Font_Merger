@@ -101,6 +101,13 @@
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
+Linux 首次下载后先赋予执行权限，再使用 Linux 可执行文件：
+
+```bash
+chmod +x font-merger-linux-x64
+./font-merger-linux-x64 "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
+```
+
 命令行使用与 GUI 相同的默认策略：`--priority auto`、`--hinting-source auto`、`--weights auto`、`--weight-match nearest`，最大字重差不设上限。未写 `--family` 时，输出家族名由去重后的源家族名以 ` + ` 连接；未写 `-o` 时输出文件名基准为 `merged.ttf`。合并无法识别为西文 + CJK 双字体的组合或三个以上字体时，字符优先级按输入顺序。
 
 <a id="zh-cn-yahei"></a>
@@ -289,6 +296,13 @@ Put the program and fonts in one folder, open a terminal there, and run:
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
+On Linux, make the downloaded binary executable once, then run the Linux build:
+
+```bash
+chmod +x font-merger-linux-x64
+./font-merger-linux-x64 "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
+```
+
 The CLI uses the same defaults as the GUI: `--priority auto`, `--hinting-source auto`, `--weights auto`, and `--weight-match nearest`, with no maximum weight gap. Without `--family`, unique source family names are joined with ` + `; without `-o`, the output base name is `merged.ttf`. Combinations that are not detected as a Latin/CJK pair, and runs with three or more fonts, use input order for glyph priority.
 
 <a id="en-yahei"></a>
@@ -475,6 +489,13 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 
 ```powershell
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
+```
+
+Linux 第一次下載後先賦予執行權限，再使用 Linux 執行檔：
+
+```bash
+chmod +x font-merger-linux-x64
+./font-merger-linux-x64 "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
 命令列使用與 GUI 相同的預設策略：`--priority auto`、`--hinting-source auto`、`--weights auto`、`--weight-match nearest`，且最大字重差沒有上限。未指定 `--family` 時，輸出家族名稱由去重後的來源家族名稱以 ` + ` 連接；未指定 `-o` 時，輸出檔名基準為 `merged.ttf`。無法辨識為西文 + CJK 雙字型的組合或三個以上字型，會依輸入順序決定字元優先順序。
