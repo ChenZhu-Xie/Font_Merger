@@ -28,7 +28,7 @@ from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
