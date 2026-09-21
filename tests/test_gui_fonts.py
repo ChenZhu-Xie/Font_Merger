@@ -106,6 +106,7 @@ class GUIFontTests(TestCase):
         self.assertTrue(is_single_weight_request("Bold", ""))
         self.assertTrue(is_single_weight_request("", "wght=350"))
         self.assertTrue(is_single_weight_request("", "wdth=90, WGHT =350"))
+        self.assertTrue(is_single_weight_request("", "", "Bold"))
         self.assertFalse(is_single_weight_request("", "wdth=90,slnt=-10"))
         self.assertFalse(is_single_weight_request("", ""))
 

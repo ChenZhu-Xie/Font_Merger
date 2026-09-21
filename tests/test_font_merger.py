@@ -3,6 +3,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
+from unittest.mock import patch
 
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
@@ -273,6 +274,28 @@ class FontMergerTests(TestCase):
                 self.assertEqual(merged["name"].getDebugName(17), "Bold")
                 self.assertEqual(merged["name"].getDebugName(2), "Bold")
                 self.assertEqual(merged["OS/2"].usWeightClass, 700)
+                self.assertTrue(merged["OS/2"].fsSelection & (1 << 5))
+                self.assertTrue(merged["head"].macStyle & 1)
+
+    def test_instance_name_overrides_metadata_style_at_explicit_axis_weight(self):
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "compat-bold.ttf"
+            # The bundled fixtures are static fonts. Mock only the variable-font
+            # instancing step so this test can exercise the instance-vs-axis
+            # metadata precedence without requiring a large variable fixture.
+            with patch("Font_Merger.instantiate_if_variable", return_value={"wght"}):
+                merge_fonts(
+                    [FontSource(LATIN), FontSource(CJK)],
+                    output,
+                    family="Compatibility Family",
+                    instance="Bold",
+                    axes={"wght": 500},
+                )
+
+            with TTFont(output) as merged:
+                self.assertEqual(merged["name"].getDebugName(2), "Bold")
+                self.assertEqual(merged["name"].getDebugName(17), "Bold")
+                self.assertEqual(merged["OS/2"].usWeightClass, 500)
                 self.assertTrue(merged["OS/2"].fsSelection & (1 << 5))
                 self.assertTrue(merged["head"].macStyle & 1)
 

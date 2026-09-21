@@ -165,6 +165,10 @@ TTC / OTC 是字体集合。先查看其中的字体：
 
 `face #0` 只是 TTC / OTC 的字体序号，并非字重。需要手动覆盖时可写 `--axis wght=350`；默认情况下通常不必填写。`--style`、`--instance` 或 `--axis wght=...` 都表示只生成一个字重，不能再同时指定非 `auto` 的 `--weights`。
 
+若需要兼容只按 Regular / Bold 名称匹配字体的旧软件，可以把视觉字重与输出样式元数据分开指定。例如 `--axis wght=500 --style Bold` 会按 500 的轮廓字重生成字体并保留 `usWeightClass=500`，同时把输出样式名称及 legacy Bold 标志写成 Bold。GUI 的高级设置中可使用“输出样式(元数据)”完成同样操作。这是一种兼容性覆盖，并不会把实际轮廓变成 700 字重。
+
+如果同时指定命名实例和轴坐标（例如 `--instance Bold --axis wght=500`），显式轴坐标仍覆盖该实例的同名轴，但输出样式保留显式实例名 Bold；需要只覆盖命名而不依赖源字体存在 Bold 实例时，优先使用 `--style Bold`。
+
 只需一个字重时明确指定实例：
 
 ```powershell
@@ -363,6 +367,10 @@ List the instances in a font with `--list`:
 
 `face #0` is only the font index in a TTC/OTC collection, not a weight. Use `--axis wght=350` to override automatic matching; it is normally unnecessary. `--style`, `--instance`, and `--axis wght=...` each request a single output weight and therefore cannot be combined with a non-`auto` `--weights` value.
 
+For legacy applications that match fonts by Regular / Bold naming rather than numeric weight, the visual weight and output style metadata can be specified independently. For example, `--axis wght=500 --style Bold` keeps the outlines and `usWeightClass=500` while writing the output style names and legacy Bold flags as Bold. The GUI exposes the same behavior as “Output style (metadata)” in Advanced settings. This is a compatibility override; it does not turn the outlines into a true 700-weight face.
+
+When both a named instance and axis coordinates are given (for example, `--instance Bold --axis wght=500`), explicit axis values still override the matching coordinates from the instance, while the output style keeps the explicitly requested instance name Bold. If you only need to override naming and do not want to require a Bold named instance in every variable input, prefer `--style Bold`.
+
 To generate only one weight, select its instance explicitly:
 
 ```powershell
@@ -560,6 +568,10 @@ TTC / OTC 是字型集合。先查看其中的字型：
 ```
 
 `face #0` 只是 TTC / OTC 的字型編號，並非字重。需要手動覆蓋時可寫 `--axis wght=350`；預設情況通常不必填寫。`--style`、`--instance` 或 `--axis wght=...` 都表示只產生一個字重，不能再同時指定非 `auto` 的 `--weights`。
+
+若要相容只依 Regular / Bold 名稱配對字型的舊軟體，可以分別指定視覺字重與輸出樣式中繼資料。例如 `--axis wght=500 --style Bold` 會依 500 的輪廓字重產生字型並保留 `usWeightClass=500`，同時把輸出樣式名稱與 legacy Bold 標誌寫成 Bold。GUI 的進階設定可使用「輸出樣式(中繼資料)」完成相同行為。這是相容性覆蓋，不會把實際輪廓變成 700 字重。
+
+若同時指定命名實例與軸座標（例如 `--instance Bold --axis wght=500`），明確的軸座標仍會覆蓋實例中的同名軸，但輸出樣式會保留明確指定的 Bold 實例名稱；若只想覆蓋命名而不要求每個來源可變字型都具有 Bold 實例，請優先使用 `--style Bold`。
 
 只需要一個字重時，請明確指定實例：
 

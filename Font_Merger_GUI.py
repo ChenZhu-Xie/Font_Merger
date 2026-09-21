@@ -137,9 +137,9 @@ def filter_installed_font_faces(
     )
 
 
-def is_single_weight_request(instance: str, axes: str) -> bool:
+def is_single_weight_request(instance: str, axes: str, style: str = "") -> bool:
     """Whether advanced settings explicitly select one output weight."""
-    if instance.strip():
+    if instance.strip() or style.strip():
         return True
     return bool(re.search(r"(?:^|[,;\s])wght\s*=", axes, flags=re.IGNORECASE))
 
@@ -261,7 +261,7 @@ TEXT = {
         "missing_weight": "缺失字重",
         "advanced_show": "▸ 显示高级设置",
         "advanced_hide": "▾ 收起高级设置",
-        "advanced_desc": "自定义顺序、字重数值、实例和可变轴",
+        "advanced_desc": "自定义顺序、字重数值、实例、可变轴和输出样式元数据",
         "custom_priority": "字符顺序",
         "custom_priority_hint": "例如 2,1,3",
         "custom_hinting": "Hinting 字体序号",
@@ -271,9 +271,11 @@ TEXT = {
         "max_gap": "最大字重差",
         "max_gap_hint": "留空表示不限制",
         "fixed_instance": "固定单一实例",
-        "fixed_instance_hint": "例如 Bold；通常留空自动匹配",
+        "fixed_instance_hint": "选择源字体命名实例；只想改 Regular/Bold 元数据请用下方输出样式",
         "variable_axes": "可变轴坐标",
         "variable_axes_hint": "例如 wght=350 或 wdth=90,slnt=-10",
+        "output_style": "输出样式(元数据)",
+        "output_style_hint": "例如 Bold；显式 wght 不变，只覆盖样式名称和 Regular/Bold 标志",
         "summary": "当前方案",
         "start": "开始合并字体",
         "log_show": "▸ 查看运行记录",
@@ -320,6 +322,7 @@ TEXT = {
         "match_exact": "必须精确匹配",
         "summary_instance": "固定 {value} 实例",
         "summary_axes": "轴 {value}",
+        "summary_style": "输出样式 {value}",
     },
     "zh_TW": {
         "window_title": "Font Merger {version}",
@@ -357,7 +360,7 @@ TEXT = {
         "missing_weight": "缺少字重",
         "advanced_show": "▸ 顯示進階設定",
         "advanced_hide": "▾ 收合進階設定",
-        "advanced_desc": "自訂順序、字重數值、實例與可變軸",
+        "advanced_desc": "自訂順序、字重數值、實例、可變軸與輸出樣式中繼資料",
         "custom_priority": "字元順序",
         "custom_priority_hint": "例如 2,1,3",
         "custom_hinting": "Hinting 字型序號",
@@ -367,9 +370,11 @@ TEXT = {
         "max_gap": "最大字重差",
         "max_gap_hint": "留空表示不限制",
         "fixed_instance": "固定單一實例",
-        "fixed_instance_hint": "例如 Bold；通常留空自動配對",
+        "fixed_instance_hint": "選擇來源字型命名實例；只想改 Regular/Bold 中繼資料請使用下方輸出樣式",
         "variable_axes": "可變軸座標",
         "variable_axes_hint": "例如 wght=350 或 wdth=90,slnt=-10",
+        "output_style": "輸出樣式(中繼資料)",
+        "output_style_hint": "例如 Bold；明確 wght 不變，只覆蓋樣式名稱與 Regular/Bold 標誌",
         "summary": "目前方案",
         "start": "開始合併字型",
         "log_show": "▸ 查看執行記錄",
@@ -416,6 +421,7 @@ TEXT = {
         "match_exact": "必須精確符合",
         "summary_instance": "固定 {value} 實例",
         "summary_axes": "軸 {value}",
+        "summary_style": "輸出樣式 {value}",
     },
     "en": {
         "window_title": "Font Merger {version}",
@@ -453,7 +459,7 @@ TEXT = {
         "missing_weight": "Missing weights",
         "advanced_show": "▸ Show advanced settings",
         "advanced_hide": "▾ Hide advanced settings",
-        "advanced_desc": "Custom order, numeric weights, instances and variable axes",
+        "advanced_desc": "Custom order, numeric weights, instances, variable axes and output style metadata",
         "custom_priority": "Glyph order",
         "custom_priority_hint": "For example: 2,1,3",
         "custom_hinting": "Hinting font number",
@@ -463,9 +469,11 @@ TEXT = {
         "max_gap": "Maximum weight gap",
         "max_gap_hint": "Leave blank for no limit",
         "fixed_instance": "Single named instance",
-        "fixed_instance_hint": "For example: Bold; leave blank for automatic matching",
+        "fixed_instance_hint": "Select a source named instance; use Output style below to override only Regular/Bold metadata",
         "variable_axes": "Variable axis values",
         "variable_axes_hint": "For example: wght=350 or wdth=90,slnt=-10",
+        "output_style": "Output style (metadata)",
+        "output_style_hint": "For example: Bold; keeps explicit wght while overriding style names and Regular/Bold flags",
         "summary": "Current plan",
         "start": "Merge fonts",
         "log_show": "▸ Show activity log",
@@ -512,6 +520,7 @@ TEXT = {
         "match_exact": "Require an exact match",
         "summary_instance": "Instance {value}",
         "summary_axes": "Axes {value}",
+        "summary_style": "Output style {value}",
     },
 }
 
@@ -730,6 +739,7 @@ class FontMergerGUI:
         self.max_gap = tk.StringVar()
         self.instance = tk.StringVar()
         self.axes = tk.StringVar()
+        self.style = tk.StringVar()
         self.summary = tk.StringVar()
         self.status = tk.StringVar()
         self.font_count = tk.StringVar()
@@ -738,6 +748,7 @@ class FontMergerGUI:
         self._build_layout()
         self.instance.trace_add("write", self._sync_single_weight_state)
         self.axes.trace_add("write", self._sync_single_weight_state)
+        self.style.trace_add("write", self._sync_single_weight_state)
         for variable in (
             self.priority,
             self.hinting,
@@ -749,6 +760,7 @@ class FontMergerGUI:
             self.max_gap,
             self.instance,
             self.axes,
+            self.style,
         ):
             variable.trace_add("write", self.update_summary)
         self._sync_single_weight_state()
@@ -1290,6 +1302,7 @@ class FontMergerGUI:
             ("max_gap", self.max_gap, "max_gap_hint"),
             ("fixed_instance", self.instance, "fixed_instance_hint"),
             ("variable_axes", self.axes, "variable_axes_hint"),
+            ("output_style", self.style, "output_style_hint"),
         )
         for index, (label, variable, hint) in enumerate(fields):
             row, side = divmod(index, 2)
@@ -1442,6 +1455,7 @@ class FontMergerGUI:
         self.max_gap.set("")
         self.instance.set("")
         self.axes.set("")
+        self.style.set("")
         self.set_status("status_reset")
         self.status_label.configure(foreground=PALETTES["Footer"]["muted"])
 
@@ -1465,7 +1479,9 @@ class FontMergerGUI:
         self._refresh_toggle_texts()
 
     def _single_weight_override_active(self) -> bool:
-        return is_single_weight_request(self.instance.get(), self.axes.get())
+        return is_single_weight_request(
+            self.instance.get(), self.axes.get(), self.style.get()
+        )
 
     def _sync_single_weight_state(self, *_args: object) -> None:
         """Keep single-weight and multi-weight settings mutually exclusive."""
@@ -1504,6 +1520,8 @@ class FontMergerGUI:
             )
         if self.axes.get().strip():
             details.append(self.t("summary_axes", value=self.axes.get().strip()))
+        if self.style.get().strip():
+            details.append(self.t("summary_style", value=self.style.get().strip()))
         self.summary.set(" · ".join(details))
 
     def update_font_state(self) -> None:
@@ -1749,6 +1767,7 @@ class FontMergerGUI:
             "sources": sources,
             "output": Path(self.output.get()),
             "family": self.family.get().strip() or None,
+            "style": self.style.get().strip() or None,
             "axes": axes,
             "priority": self.custom_priority.get().strip() or self.priority.get(),
             "hinting_source": self.custom_hinting.get().strip() or self.hinting.get(),

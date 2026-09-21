@@ -28,7 +28,7 @@ from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.3.4"
+VERSION = "2.3.5"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
@@ -1039,10 +1039,10 @@ def merge_fonts(
 
     if style:
         chosen_style = style
-    elif "wght" in axes:
-        chosen_style = style_for_weight(axes["wght"])
     elif instance:
         chosen_style = next((name for name in matched_instance_names if name), instance)
+    elif "wght" in axes:
+        chosen_style = style_for_weight(axes["wght"])
     elif not infos[priority_order[0]].variable:
         chosen_style = infos[priority_order[0]].style
     elif chosen_instance_name and any(matched_instance_names):
@@ -1263,7 +1263,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="输出文件名基准；多个字重会自动添加样式名（默认 merged.ttf）",
     )
     parser.add_argument("--family", help="输出字体家族名")
-    parser.add_argument("--style", help="输出样式名；默认自动匹配输入字体")
+    parser.add_argument(
+        "--style",
+        help="输出样式/元数据名；可与 --axis wght=N 组合，保留实际字重并覆盖 Regular/Bold 等样式",
+    )
     parser.add_argument(
         "--instance",
         metavar="NAME",
