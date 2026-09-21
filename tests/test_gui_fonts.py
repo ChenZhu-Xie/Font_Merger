@@ -8,12 +8,17 @@ from fontTools.ttLib import TTFont
 
 from Font_Merger import FontSource
 from Font_Merger_GUI import (
+    COMBOBOX_LIST_BACKGROUND,
+    COMBOBOX_LIST_FOREGROUND,
+    COMBOBOX_LIST_SELECTED_BACKGROUND,
+    COMBOBOX_LIST_SELECTED_FOREGROUND,
     DEFAULT_LOCALE,
     GUI_FONT_FAMILY,
     GUI_FONT_FILENAME,
     FontMergerGUI,
     InstalledFontFace,
     TEXT,
+    configure_gui_font,
     filter_installed_font_faces,
     gui_font_candidates,
     installed_font_faces,
@@ -39,6 +44,43 @@ class GUIFontTests(TestCase):
         traditional_only = set("選擇型檔併產進階顯設個與軸錯誤讀處順語")
         text = "".join(TEXT["zh_CN"].values())
         self.assertTrue(traditional_only.isdisjoint(text))
+
+    def test_cjk_ui_parentheses_have_no_fullwidth_leading_gap(self):
+        for locale in ("zh_CN", "zh_TW"):
+            text = "".join(TEXT[locale].values())
+            self.assertNotIn("（", text)
+            self.assertNotIn("）", text)
+
+    def test_combobox_popdown_uses_muted_palette(self):
+        root = Mock()
+        named_font = Mock()
+        with patch("Font_Merger_GUI.register_private_font", return_value=False), patch(
+            "Font_Merger_GUI.tkfont.families", return_value=()
+        ), patch("Font_Merger_GUI.tkfont.nametofont", return_value=named_font):
+            configure_gui_font(root)
+
+        root.option_add.assert_any_call(
+            "*TCombobox*Listbox.background", COMBOBOX_LIST_BACKGROUND
+        )
+        root.option_add.assert_any_call(
+            "*TCombobox*Listbox.foreground", COMBOBOX_LIST_FOREGROUND
+        )
+        root.option_add.assert_any_call(
+            "*TCombobox*Listbox.selectBackground",
+            COMBOBOX_LIST_SELECTED_BACKGROUND,
+        )
+        root.option_add.assert_any_call(
+            "*TCombobox*Listbox.selectForeground",
+            COMBOBOX_LIST_SELECTED_FOREGROUND,
+        )
+
+    def test_summary_omits_repeated_recommendation_suffix(self):
+        gui = Mock(locale="zh_CN")
+        gui._choice_label.return_value = "自动识别(推荐)"
+
+        label = FontMergerGUI._summary_choice_label(gui, "auto", ())
+
+        self.assertEqual(label, "自动识别")
 
     def test_bundled_font_is_preferred_over_an_installed_font(self):
         app_dir = Path("C:/FontMerger")

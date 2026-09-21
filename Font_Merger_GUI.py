@@ -35,6 +35,10 @@ GUI_FONT_FILENAME = "JetBrainsLxgwNerdMono-Regular.ttf"
 GUI_FONT_FALLBACK = "Segoe UI"
 GUI_FONT_RELATIVE_PATH = Path("assets") / "fonts" / GUI_FONT_FILENAME
 FONT_FILE_SUFFIXES = {".ttf", ".otf", ".ttc", ".otc"}
+COMBOBOX_LIST_BACKGROUND = "#D6DEE4"
+COMBOBOX_LIST_FOREGROUND = "#344553"
+COMBOBOX_LIST_SELECTED_BACKGROUND = "#607487"
+COMBOBOX_LIST_SELECTED_FOREGROUND = "#F7F8F8"
 
 
 @dataclass(frozen=True)
@@ -193,6 +197,19 @@ def configure_gui_font(root: tk.Tk) -> tuple[str, Path | None]:
             pass
     root.option_add("*Font", f"{{{family}}} 10")
     root.option_add("*TCombobox*Listbox.font", f"{{{family}}} 10")
+    # A ttk Combobox creates its drop-down as a separate classic Tk Listbox,
+    # so ttk style colors do not reach it. Keep every pop-down aligned with the
+    # muted application palette instead of falling back to bright system white.
+    root.option_add("*TCombobox*Listbox.background", COMBOBOX_LIST_BACKGROUND)
+    root.option_add("*TCombobox*Listbox.foreground", COMBOBOX_LIST_FOREGROUND)
+    root.option_add(
+        "*TCombobox*Listbox.selectBackground",
+        COMBOBOX_LIST_SELECTED_BACKGROUND,
+    )
+    root.option_add(
+        "*TCombobox*Listbox.selectForeground",
+        COMBOBOX_LIST_SELECTED_FOREGROUND,
+    )
     return family, registered
 
 
@@ -200,6 +217,11 @@ LANGUAGES = {
     "zh_CN": "简体中文",
     "zh_TW": "繁體中文",
     "en": "English",
+}
+SUMMARY_RECOMMENDATION_SUFFIXES = {
+    "zh_CN": "(推荐)",
+    "zh_TW": "(建議)",
+    "en": " (recommended)",
 }
 
 TEXT = {
@@ -226,7 +248,7 @@ TEXT = {
         "output_desc": "多字重会自动在文件名后添加 Thin、Regular、Bold 等样式名。",
         "output_file": "输出文件",
         "browse": "浏览…",
-        "family_optional": "家族名（可选）",
+        "family_optional": "家族名(可选)",
         "rules_title": "选择合并策略",
         "rules_desc": "下面三项彼此独立。保持推荐值即可完成常见的中西文字体合并。",
         "reset_recommended": "恢复推荐设置",
@@ -281,20 +303,20 @@ TEXT = {
         "done_text": "已生成 {count} 个字体。",
         "error_title": "合并失败",
         "engine_error_generic": "字体处理失败，请检查所选字体和高级参数。",
-        "priority_auto": "自动识别（推荐）",
+        "priority_auto": "自动识别(推荐)",
         "priority_input": "按字体列表顺序",
         "priority_first": "第 1 个优先",
         "priority_second": "第 2 个优先",
-        "hint_auto": "自动保持中文 / CJK（推荐）",
+        "hint_auto": "自动保持中文 / CJK(推荐)",
         "hint_latin": "优先保持西文",
         "hint_cjk": "优先保持中文 / CJK",
         "hint_none": "移除 Hinting",
-        "weights_auto": "自动匹配可实现的字重（推荐）",
+        "weights_auto": "自动匹配可实现的字重(推荐)",
         "weights_latin": "采用西文字重",
         "weights_cjk": "采用中文 / CJK 字重",
         "weights_union": "合并双方全部字重",
         "weights_intersection": "仅双方共有字重",
-        "match_nearest": "使用最接近字重（推荐）",
+        "match_nearest": "使用最接近字重(推荐)",
         "match_exact": "必须精确匹配",
         "summary_instance": "固定 {value} 实例",
         "summary_axes": "轴 {value}",
@@ -322,7 +344,7 @@ TEXT = {
         "output_desc": "多字重會自動在檔名後加入 Thin、Regular、Bold 等樣式名稱。",
         "output_file": "輸出檔案",
         "browse": "瀏覽…",
-        "family_optional": "家族名稱（選填）",
+        "family_optional": "家族名稱(選填)",
         "rules_title": "選擇合併策略",
         "rules_desc": "以下三項彼此獨立。保留建議值即可完成常見的中西文字型合併。",
         "reset_recommended": "恢復建議設定",
@@ -377,20 +399,20 @@ TEXT = {
         "done_text": "已產生 {count} 個字型。",
         "error_title": "合併失敗",
         "engine_error_generic": "字型處理失敗，請檢查所選字型與進階參數。",
-        "priority_auto": "自動辨識（建議）",
+        "priority_auto": "自動辨識(建議)",
         "priority_input": "依字型清單順序",
         "priority_first": "第 1 個優先",
         "priority_second": "第 2 個優先",
-        "hint_auto": "自動保留中文 / CJK（建議）",
+        "hint_auto": "自動保留中文 / CJK(建議)",
         "hint_latin": "優先保留西文",
         "hint_cjk": "優先保留中文 / CJK",
         "hint_none": "移除 Hinting",
-        "weights_auto": "自動配對可實現的字重（建議）",
+        "weights_auto": "自動配對可實現的字重(建議)",
         "weights_latin": "採用西文字重",
         "weights_cjk": "採用中文 / CJK 字重",
         "weights_union": "合併雙方全部字重",
         "weights_intersection": "僅雙方共有字重",
-        "match_nearest": "使用最接近字重（建議）",
+        "match_nearest": "使用最接近字重(建議)",
         "match_exact": "必須精確符合",
         "summary_instance": "固定 {value} 實例",
         "summary_axes": "軸 {value}",
@@ -844,6 +866,17 @@ class FontMergerGUI:
             troughcolor=footer["control"],
             borderwidth=0,
         )
+        style.configure(
+            "Footer.SummaryTitle.TLabel",
+            background=footer["control"],
+            foreground=footer["muted"],
+            font=(self.gui_font_family, 9, "bold"),
+        )
+        style.configure(
+            "Footer.SummaryValue.TLabel",
+            background=footer["control"],
+            foreground="#405F70",
+        )
 
     def _build_layout(self) -> None:
         shell = ttk.Frame(self.root, style="App.TFrame")
@@ -1157,10 +1190,17 @@ class FontMergerGUI:
         self._register_text(title_label, title)
         title_label.grid(row=0, column=0, sticky="w")
         description_label = ttk.Label(
-            panel, style="Rules.InnerMuted.TLabel", wraplength=230
+            panel, style="Rules.InnerMuted.TLabel", wraplength=260
         )
         self._register_text(description_label, description)
-        description_label.grid(row=1, column=0, sticky="w", pady=(3, 8))
+        description_label.grid(row=1, column=0, sticky="ew", pady=(3, 8))
+        panel.bind(
+            "<Configure>",
+            lambda event, label=description_label: label.configure(
+                wraplength=max(event.width - 24, 1)
+            ),
+            add="+",
+        )
         self._localized_choice(panel, variable, choices, "Rules.TCombobox").grid(
             row=2, column=0, sticky="ew"
         )
@@ -1216,6 +1256,13 @@ class FontMergerGUI:
 
     def _choice_label(self, code: str, choices: tuple[tuple[str, str], ...]) -> str:
         return next((self.t(key) for key, value in choices if value == code), code)
+
+    def _summary_choice_label(
+        self, code: str, choices: tuple[tuple[str, str], ...]
+    ) -> str:
+        label = self._choice_label(code, choices)
+        suffix = SUMMARY_RECOMMENDATION_SUFFIXES[self.locale]
+        return label.removesuffix(suffix)
 
     def _build_advanced_card(self, parent: ttk.Frame) -> ttk.Frame:
         card = self._region_frame(parent, "Advanced", padding=(14, 9))
@@ -1276,17 +1323,24 @@ class FontMergerGUI:
         frame.columnconfigure(1, weight=1)
         label = ttk.Label(
             frame,
-            style="Footer.Inner.TLabel",
-            font=(self.gui_font_family, 9, "bold"),
+            style="Footer.SummaryTitle.TLabel",
         )
         self._register_text(label, "summary")
         label.grid(row=0, column=0, sticky="w", padx=(0, 12))
-        ttk.Label(
+        summary_value = ttk.Label(
             frame,
             textvariable=self.summary,
-            style="Footer.Inner.TLabel",
+            style="Footer.SummaryValue.TLabel",
             wraplength=740,
-        ).grid(row=0, column=1, sticky="ew")
+        )
+        summary_value.grid(row=0, column=1, sticky="ew")
+        frame.bind(
+            "<Configure>",
+            lambda event: summary_value.configure(
+                wraplength=max(event.width - label.winfo_width() - 36, 1)
+            ),
+            add="+",
+        )
         return frame
 
     def _build_actions(self, parent: ttk.Frame) -> ttk.Frame:
@@ -1430,25 +1484,27 @@ class FontMergerGUI:
         self.max_gap_entry.configure(state=entry_state)
 
     def update_summary(self, *_args: object) -> None:
-        priority = self.custom_priority.get().strip() or self._choice_label(
+        priority = self.custom_priority.get().strip() or self._summary_choice_label(
             self.priority.get(), PRIORITY_CHOICES
         )
-        hinting = self.custom_hinting.get().strip() or self._choice_label(
+        hinting = self.custom_hinting.get().strip() or self._summary_choice_label(
             self.hinting.get(), HINTING_CHOICES
         )
-        weights = self.custom_weights.get().strip() or self._choice_label(
+        weights = self.custom_weights.get().strip() or self._summary_choice_label(
             self.weights.get(), WEIGHT_CHOICES
         )
         details = [priority, hinting, weights]
         if not self._single_weight_override_active():
-            details.append(self._choice_label(self.weight_match.get(), MATCH_CHOICES))
+            details.append(
+                self._summary_choice_label(self.weight_match.get(), MATCH_CHOICES)
+            )
         if self.instance.get().strip():
             details.append(
                 self.t("summary_instance", value=self.instance.get().strip())
             )
         if self.axes.get().strip():
             details.append(self.t("summary_axes", value=self.axes.get().strip()))
-        self.summary.set("  ·  ".join(details))
+        self.summary.set(" · ".join(details))
 
     def update_font_state(self) -> None:
         count = self.fonts.size()
