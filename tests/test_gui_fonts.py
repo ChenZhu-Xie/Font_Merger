@@ -12,11 +12,14 @@ from Font_Merger_GUI import (
     COMBOBOX_LIST_FOREGROUND,
     COMBOBOX_LIST_SELECTED_BACKGROUND,
     COMBOBOX_LIST_SELECTED_FOREGROUND,
+    DANGER,
     DEFAULT_LOCALE,
     GUI_FONT_FAMILY,
     GUI_FONT_FILENAME,
     FontMergerGUI,
     InstalledFontFace,
+    PALETTES,
+    SUCCESS,
     TEXT,
     configure_gui_font,
     filter_installed_font_faces,
@@ -37,6 +40,21 @@ TEST_FONT = BUNDLED_FONT if BUNDLED_FONT.is_file() else SYSTEM_FONT
 
 
 class GUIFontTests(TestCase):
+    @staticmethod
+    def _contrast_ratio(first: str, second: str) -> float:
+        def luminance(color: str) -> float:
+            channels = (int(color[index : index + 2], 16) / 255 for index in (1, 3, 5))
+            linear = (
+                value / 12.92
+                if value <= 0.04045
+                else ((value + 0.055) / 1.055) ** 2.4
+                for value in channels
+            )
+            return sum(weight * value for weight, value in zip((0.2126, 0.7152, 0.0722), linear))
+
+        lighter, darker = sorted((luminance(first), luminance(second)), reverse=True)
+        return (lighter + 0.05) / (darker + 0.05)
+
     def test_default_locale_is_simplified_chinese(self):
         self.assertEqual(DEFAULT_LOCALE, "zh_CN")
 
@@ -72,6 +90,54 @@ class GUIFontTests(TestCase):
         root.option_add.assert_any_call(
             "*TCombobox*Listbox.selectForeground",
             COMBOBOX_LIST_SELECTED_FOREGROUND,
+        )
+
+    def test_text_colors_keep_readable_contrast(self):
+        for region, colors in PALETTES.items():
+            with self.subTest(region=region, use="surface text"):
+                self.assertGreaterEqual(
+                    self._contrast_ratio(colors["text"], colors["surface"]), 4.5
+                )
+            with self.subTest(region=region, use="muted text"):
+                self.assertGreaterEqual(
+                    self._contrast_ratio(colors["muted"], colors["surface"]), 4.5
+                )
+            with self.subTest(region=region, use="control text"):
+                self.assertGreaterEqual(
+                    self._contrast_ratio(colors["control_text"], colors["control"]),
+                    4.5,
+                )
+            with self.subTest(region=region, use="muted control text"):
+                self.assertGreaterEqual(
+                    self._contrast_ratio(
+                        colors["control_muted"], colors["control"]
+                    ),
+                    4.5,
+                )
+
+        self.assertGreaterEqual(
+            self._contrast_ratio(
+                PALETTES["Log"]["control_text"], PALETTES["Log"]["accent"]
+            ),
+            4.5,
+        )
+        for status_color in (SUCCESS, DANGER):
+            self.assertGreaterEqual(
+                self._contrast_ratio(status_color, PALETTES["Footer"]["surface"]),
+                4.5,
+            )
+        self.assertGreaterEqual(
+            self._contrast_ratio(
+                COMBOBOX_LIST_FOREGROUND, COMBOBOX_LIST_BACKGROUND
+            ),
+            4.5,
+        )
+        self.assertGreaterEqual(
+            self._contrast_ratio(
+                COMBOBOX_LIST_SELECTED_FOREGROUND,
+                COMBOBOX_LIST_SELECTED_BACKGROUND,
+            ),
+            4.5,
         )
 
     def test_summary_omits_repeated_recommendation_suffix(self):
@@ -191,6 +257,40 @@ class GUIFontTests(TestCase):
 
         gui._on_mousewheel.assert_called_once_with(event)
         self.assertEqual(result, "break")
+
+    def test_child_window_wheel_does_not_scroll_main_window(self):
+        gui = Mock()
+        gui.root = object()
+        event = Mock()
+        event.widget.winfo_toplevel.return_value = object()
+
+        FontMergerGUI._on_mousewheel(gui, event)
+
+        gui.canvas.bbox.assert_not_called()
+
+    def test_nested_scrollable_control_does_not_also_scroll_page(self):
+        gui = Mock()
+        gui.root = object()
+        event = Mock()
+        event.widget.winfo_toplevel.return_value = gui.root
+        event.widget.winfo_class.return_value = "Listbox"
+
+        FontMergerGUI._on_mousewheel(gui, event)
+
+        gui.canvas.bbox.assert_not_called()
+
+    def test_main_window_wheel_still_scrolls_page(self):
+        gui = Mock()
+        gui.root = object()
+        gui.canvas.bbox.return_value = (0, 0, 800, 1200)
+        gui.canvas.winfo_height.return_value = 700
+        event = Mock(delta=-120)
+        event.widget.winfo_toplevel.return_value = gui.root
+        event.widget.winfo_class.return_value = "TFrame"
+
+        FontMergerGUI._on_mousewheel(gui, event)
+
+        gui.canvas.yview_scroll.assert_called_once_with(3, "units")
 
     def test_child_window_is_centered_over_parent(self):
         gui = Mock()

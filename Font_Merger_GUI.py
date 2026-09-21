@@ -36,7 +36,7 @@ GUI_FONT_FALLBACK = "Segoe UI"
 GUI_FONT_RELATIVE_PATH = Path("assets") / "fonts" / GUI_FONT_FILENAME
 FONT_FILE_SUFFIXES = {".ttf", ".otf", ".ttc", ".otc"}
 COMBOBOX_LIST_BACKGROUND = "#D6DEE4"
-COMBOBOX_LIST_FOREGROUND = "#344553"
+COMBOBOX_LIST_FOREGROUND = "#1F2933"
 COMBOBOX_LIST_SELECTED_BACKGROUND = "#607487"
 COMBOBOX_LIST_SELECTED_FOREGROUND = "#F7F8F8"
 
@@ -551,11 +551,13 @@ MATCH_CHOICES = (
 # Each major region owns a muted Morandi palette. Nested controls inherit it.
 PALETTES = {
     "Header": {
-        "surface": "#697A8D",
+        "surface": "#5E7083",
         "control": "#E2E7EA",
         "border": "#8795A3",
-        "text": "#F7F8F8",
-        "muted": "#DCE2E7",
+        "text": "#FFFFFF",
+        "control_text": "#344553",
+        "muted": "#EFF3F5",
+        "control_muted": "#4E6073",
         "accent": "#4E6073",
     },
     "Input": {
@@ -563,54 +565,66 @@ PALETTES = {
         "control": "#EDF1EA",
         "border": "#B6C2B1",
         "text": "#3F4A3D",
-        "muted": "#6F7C6B",
-        "accent": "#71816C",
+        "control_text": "#3F4A3D",
+        "muted": "#596654",
+        "control_muted": "#596654",
+        "accent": "#596C55",
     },
     "Output": {
         "surface": "#E8DAD8",
         "control": "#F3E9E7",
         "border": "#CDB5B3",
         "text": "#544241",
-        "muted": "#876F6D",
-        "accent": "#967978",
+        "control_text": "#544241",
+        "muted": "#725A58",
+        "control_muted": "#725A58",
+        "accent": "#795C5B",
     },
     "Rules": {
         "surface": "#DCE3E9",
         "control": "#EBEFF3",
         "border": "#B7C2CC",
         "text": "#3D4854",
-        "muted": "#6B7885",
-        "accent": "#718496",
+        "control_text": "#3D4854",
+        "muted": "#586675",
+        "control_muted": "#586675",
+        "accent": "#586F82",
     },
     "Advanced": {
         "surface": "#E4DCE5",
         "control": "#F0EAF1",
         "border": "#C5B6C7",
         "text": "#4D414F",
-        "muted": "#7D6D80",
-        "accent": "#87728A",
+        "control_text": "#4D414F",
+        "muted": "#6A596D",
+        "control_muted": "#6A596D",
+        "accent": "#725B76",
     },
     "Footer": {
         "surface": "#E5DFD2",
         "control": "#F1EDE5",
         "border": "#C7BDA9",
         "text": "#4E493F",
-        "muted": "#7C7465",
-        "accent": "#80745F",
+        "control_text": "#4E493F",
+        "muted": "#685F50",
+        "control_muted": "#685F50",
+        "accent": "#675B48",
     },
     "Log": {
         "surface": "#D8DDDC",
         "control": "#303837",
         "border": "#AAB4B2",
         "text": "#34403E",
-        "muted": "#667371",
-        "accent": "#657774",
+        "control_text": "#F4F7F6",
+        "muted": "#53615F",
+        "control_muted": "#B7C2C0",
+        "accent": "#4E625F",
     },
 }
 
 APP_BACKGROUND = "#E9E5DF"
-SUCCESS = "#5D7C6A"
-DANGER = "#9A5F5B"
+SUCCESS = "#3F654F"
+DANGER = "#814441"
 
 # fontTools work runs in a worker thread. Keeping the original printf-style
 # arguments lets the GUI render the same activity record in the active locale.
@@ -815,29 +829,36 @@ class FontMergerGUI:
             style.configure(
                 f"{region}.Inner.TLabel",
                 background=colors["control"],
-                foreground=colors["text"],
+                foreground=colors["control_text"],
             )
             style.configure(
                 f"{region}.InnerMuted.TLabel",
                 background=colors["control"],
-                foreground=colors["muted"],
+                foreground=colors["control_muted"],
                 font=(self.gui_font_family, 9),
             )
             style.configure(
                 f"{region}.TButton",
                 background=colors["control"],
-                foreground=colors["accent"],
+                foreground=colors["control_text"],
                 bordercolor=colors["border"],
                 padding=(11, 7),
             )
+            active_background = (
+                colors["accent"] if region == "Log" else colors["surface"]
+            )
+            active_foreground = (
+                colors["text"] if region == "Header" else colors["control_text"]
+            )
             style.map(
                 f"{region}.TButton",
-                background=[("active", colors["surface"])],
+                background=[("active", active_background)],
+                foreground=[("active", active_foreground)],
             )
             style.configure(
                 f"{region}.TEntry",
                 fieldbackground=colors["control"],
-                foreground=colors["text"],
+                foreground=colors["control_text"],
                 bordercolor=colors["border"],
                 lightcolor=colors["border"],
                 darkcolor=colors["border"],
@@ -847,16 +868,17 @@ class FontMergerGUI:
                 f"{region}.TCombobox",
                 fieldbackground=colors["control"],
                 background=colors["control"],
-                foreground=colors["text"],
+                foreground=colors["control_text"],
                 bordercolor=colors["border"],
-                arrowcolor=colors["accent"],
+                arrowcolor=colors["control_text"],
                 padding=6,
             )
             style.map(
                 f"{region}.TCombobox",
                 fieldbackground=[("readonly", colors["control"])],
+                foreground=[("readonly", colors["control_text"])],
                 selectbackground=[("readonly", colors["control"])],
-                selectforeground=[("readonly", colors["text"])],
+                selectforeground=[("readonly", colors["control_text"])],
             )
         footer = PALETTES["Footer"]
         style.configure(
@@ -869,8 +891,8 @@ class FontMergerGUI:
         )
         style.map(
             "Primary.TButton",
-            background=[("active", "#6D624F"), ("disabled", "#B9B09F")],
-            foreground=[("disabled", "#F3F0EA")],
+            background=[("active", "#584C3B"), ("disabled", "#C2BAAB")],
+            foreground=[("disabled", footer["text"])],
         )
         style.configure(
             "Morandi.Horizontal.TProgressbar",
@@ -953,6 +975,18 @@ class FontMergerGUI:
         self.canvas.itemconfigure(self.canvas_window, width=self._pending_width)
 
     def _on_mousewheel(self, event: tk.Event) -> None:
+        # ``bind_all`` also receives wheel events from modal child windows.
+        # Ignore those events so scrolling the system-font picker cannot move
+        # the obscured main window behind it.
+        try:
+            if event.widget.winfo_toplevel() is not self.root:
+                return
+            # Native Listbox/Text bindings already scroll these controls. Let
+            # them consume the wheel without also moving the surrounding page.
+            if event.widget.winfo_class() in {"Listbox", "Text"}:
+                return
+        except (AttributeError, tk.TclError):
+            return
         bounds = self.canvas.bbox("all")
         if bounds is None or bounds[3] <= self.canvas.winfo_height():
             return
@@ -1391,7 +1425,7 @@ class FontMergerGUI:
             state=tk.DISABLED,
             wrap="word",
             bg=colors["control"],
-            fg="#DDE3E1",
+            fg=colors["control_text"],
             insertbackground="#FFFFFF",
             borderwidth=0,
             padx=10,
