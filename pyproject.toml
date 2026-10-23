@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "font-merger-union"
-version = "2.3.6"
+version = "2.3.7"
 description = "Merge font families with automatic weights, Latin/CJK priority, selectable hinting and a GUI"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [{ name = "ChenZhu-Xie" }]
-dependencies = ["fonttools>=4.51"]
+dependencies = ["fonttools>=4.67.0"]
 
 [project.scripts]
 font-merger = "Font_Merger:main"

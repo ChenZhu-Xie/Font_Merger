@@ -25,3 +25,5 @@ release-licenses/
 
 # Version control folder
 manual_version_control/
+
+*.png

@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import patch
 
+from fontTools.otlLib.builder import buildMathTable
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
 
@@ -312,6 +313,49 @@ class FontMergerTests(TestCase):
                 self.assertFalse({"cvt ", "fpgm", "prep"}.intersection(merged.keys()))
                 glyph = merged["glyf"][merged.getBestCmap()[ord("A")]]
                 self.assertEqual(len(glyph.program.getBytecode()), 0)
+
+    def test_math_table_is_merged_and_preserved(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            math_cjk = temp / "math-cjk.ttf"
+            output = temp / "merged-math.ttf"
+
+            with TTFont(CJK) as font:
+                math_codepoint = 0x4E00
+                math_glyph = font.getBestCmap()[math_codepoint]
+                buildMathTable(
+                    font,
+                    constants={"AxisHeight": 250},
+                    topAccentAttachments={math_glyph: 500},
+                    extendedShapes={math_glyph},
+                    minConnectorOverlap=50,
+                    vertGlyphVariants={math_glyph: [(math_glyph, 1000)]},
+                )
+                font.save(math_cjk)
+
+            merge_fonts(
+                [FontSource(LATIN), FontSource(math_cjk)],
+                output,
+                family="Math Merge Test",
+            )
+
+            with TTFont(output) as merged:
+                self.assertIn("MATH", merged)
+                merged_math_glyph = merged.getBestCmap()[math_codepoint]
+                math = merged["MATH"].table
+                self.assertEqual(math.MathConstants.AxisHeight.Value, 250)
+                self.assertIn(
+                    merged_math_glyph,
+                    math.MathGlyphInfo.MathTopAccentAttachment.TopAccentCoverage.glyphs,
+                )
+                self.assertIn(
+                    merged_math_glyph,
+                    math.MathGlyphInfo.ExtendedShapeCoverage.glyphs,
+                )
+                self.assertIn(
+                    merged_math_glyph,
+                    math.MathVariants.VertGlyphCoverage.glyphs,
+                )
 
 
 if __name__ == "__main__":
