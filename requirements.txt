@@ -1,1 +1,2 @@
-fonttools>=4.67.0
+fonttools>=4.51,<4.66; python_version < "3.11"
+fonttools>=4.67.0; python_version >= "3.11"

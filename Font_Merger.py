@@ -19,22 +19,66 @@ from pathlib import Path
 from typing import Iterable, Sequence
 
 from fontTools.merge import Merger
+from fontTools.merge.base import mergeObjects
 from fontTools.merge.options import Options as MergeOptions
+from fontTools.merge.util import first, sumLists
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.subset import Options as SubsetOptions
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTCollection, TTFont, newTable
+from fontTools.ttLib.tables import otTables
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.3.7"
+VERSION = "2.3.8"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
 COLOR_TABLES = {"COLR", "CPAL", "CBDT", "CBLC", "sbix", "SVG "}
 INVALIDATED_TABLES = {"DSIG"}
 HINT_TABLES = {"cvt ", "cvar", "fpgm", "prep", "hdmx", "VDMX", "LTSH"}
+
+
+def enable_legacy_math_table_merging() -> None:
+    """Backport fontTools 4.67 MATH merge maps for Python 3.10.
+
+    fontTools 4.67 contains the upstream fix but requires Python 3.11.  Python
+    3.10 therefore uses fontTools 4.65 plus these same declarative merge rules.
+    See https://github.com/fonttools/fonttools/pull/4257.
+    """
+    if hasattr(otTables.MathConstants, "mergeMap"):
+        return
+
+    otTables.MathConstants.mergeMap = {"*": first}
+    otTables.MathGlyphInfo.mergeMap = {"*": mergeObjects}
+    otTables.MathItalicsCorrectionInfo.mergeMap = {
+        "Coverage": mergeObjects,
+        "ItalicsCorrectionCount": sum,
+        "ItalicsCorrection": sumLists,
+    }
+    otTables.MathTopAccentAttachment.mergeMap = {
+        "TopAccentCoverage": mergeObjects,
+        "TopAccentAttachmentCount": sum,
+        "TopAccentAttachment": sumLists,
+    }
+    otTables.MathKernInfo.mergeMap = {
+        "MathKernCoverage": mergeObjects,
+        "MathKernCount": sum,
+        "MathKernInfoRecords": sumLists,
+    }
+    otTables.MathVariants.mergeMap = {
+        "MinConnectorOverlap": first,
+        "VertGlyphCoverage": mergeObjects,
+        "HorizGlyphCoverage": mergeObjects,
+        "VertGlyphCount": sum,
+        "HorizGlyphCount": sum,
+        "VertGlyphConstruction": sumLists,
+        "HorizGlyphConstruction": sumLists,
+    }
+
+
+enable_legacy_math_table_merging()
 
 
 class FontMergerError(RuntimeError):
