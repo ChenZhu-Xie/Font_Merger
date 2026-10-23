@@ -1,5 +1,10 @@
 # 同类项目调研（2026-09-17）
 
+后续材料：
+
+- [2026-10-23 外部横向评测原文](research/2026-10-23-font-merger-landscape.txt)
+- [经源码和样本验证后的项目路线图](roadmap.md)
+
 ## 找到的 GitHub issue
 
 仓库作者 `ChenZhu-Xie` 在以下两个 issue 中贴过本项目：

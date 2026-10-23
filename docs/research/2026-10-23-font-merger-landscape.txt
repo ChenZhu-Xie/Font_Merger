@@ -1,0 +1,302 @@
+标题：目前 有无比
+ChenZhu-Xie/Font_Merger 更成熟的字体合并方案？似乎没找到？
+网址：https://chatgpt.com/c/6ab226e6-d1b8-83e9-bcba-ea2f7dc02a31
+平台：ChatGPT
+创建时间：2026/09/22 14:57:46
+消息：4 条
+
+归档说明：正文来自桌面 clip；仅移除了 ChatGPT 客户端内部的
+chatgpt-content-reference 标记，并把少量仅用于显示的 Markdown 强调符号转为纯文本。
+
+用户：[2026/10/23 23:42:10]
+目前 有无比 https://github.com/ChenZhu-Xie/Font_Merger 更成熟的字体合并方案？似乎没找到？
+
+AI：[2026/10/23 23:42:10]
+有，但要分清“底层工具成熟”和“字体合并这个具体工作流成熟”。
+
+截至 2026-09-22，我查了一圈后的结论和你的感觉基本一致：如果目标是“任意西文 + CJK，做成可直接安装的单字体/等宽字体，并尽量正确处理 OpenType 元数据”，目前开源里确实没有一个明显全面压过 ChenZhu-Xie/Font_Merger 的现成方案。
+
+方案	项目成熟度	作为中英字体合并器	主要问题
+Font_Merger	项目较新	目前很贴合这个需求	项目年轻；彩色字体/CFF2 VF 等仍有限制
+fontTools fonttools merge	非常成熟	底层最靠谱之一	要求相同 UPM；VF 合并仍有限制；不是开箱即用方案
+Warcraft-Font-Merger	明显更老、更经实战	很接近	更偏“补字/魔兽字体”；OTL/variable 处理不如 Font_Merger 完整
+FontForge	非常成熟	可做	更像字体编辑器，不是自动、可复现的合并流水线
+Adobe AFDKO mergefonts	工业级成熟	可做特定合并	面向专业字体生产/CID 工作流，不是通用“一键 union”
+mono-merge / mrx7014/FontMerger	较新	类似方向	没看到比 Font_Merger 更成熟
+最值得比较的是 fontTools 本身
+
+fontTools.merge 其实是目前最可信的“通用 OpenType merger engine”之一。官方明确说它会处理 GSUB/GPOS 等 OpenType Layout，以及跨字体 metrics，而不是简单复制 glyph。
+
+而且 fontTools 本体非常活跃，4.65.0 刚在 2026-09-10 发布。
+
+问题是它有一个很关键的硬限制：
+
+所有输入字体必须有相同的 units-per-em。
+
+这对“Consolas/Inconsolata + 某个 CJK 字体”这种现实输入非常烦。
+
+另外，直接 merge variable fonts 的问题至今仍能看到未解决的 issue。
+
+所以很有意思的是：Font_Merger 并不是在和 fontTools 竞争，而更像是在 fontTools 之上补齐一个实用的 production workflow：
+
+UPM 归一化 → CFF→glyf → VF 实例化 → Unicode 优先级 → fontTools.merge/OTL → name/weight/hinting 修正 → TTC/OTC 输入 → GUI/CLI。
+
+这恰恰是原生 fonttools merge 缺的那一层。
+
+Warcraft-Font-Merger 是真正的“老前辈”
+
+这个项目反而是我觉得最值得你看的：
+
+nowar-fonts/Warcraft-Font-Merger
+
+它现在约 725 stars / 54 forks，有 Windows/macOS/Linux 二进制，可以合并多个字体，也能自动补字，2026 年仍然有更新。
+
+所以如果“成熟”是指使用历史、用户量、实战验证，它肯定比 Font_Merger 成熟。
+
+但是我特意看了它当前 merge-otd.cpp 的实现。这里有个很重要的差别：
+
+它 UPM 不同时会缩放加入字体的 glyph，之后核心逻辑基本是：
+
+如果 base cmap 没有这个 codepoint：
+    把 ext 的 cmap entry 加进去
+    把对应 glyf 加进去
+
+然后再合并部分 OS/2 code-page 和 name 信息。
+
+也就是说，它主要是在 union cmap + glyph。追加字体自己的 GSUB/GPOS/GDEF 等并没有在这段 merger 中一起 merge 进 base；这些表更多是由 base font 保留下来。
+
+所以：
+
+Warcraft-Font-Merger 更老、更快、更经实战；Font_Merger 的目标却明显更偏“尽可能保持 OpenType 语义”。
+
+另外 WFM 底层来自 otfcc，而原始 caryll/otfcc 现在已经 archived。这也是我不会把它简单称为“现在更好的技术栈”的原因。
+
+而且现实兼容性也不是完全没坑，例如目前仍有霞鹜文楷合并后 .notdef 的公开 issue。
+
+FontForge / AFDKO 则属于“工具比它成熟，但方案不比它贴题”
+
+FontForge 当然成熟得多，而且真的有 Merge Fonts...，语义就是“把另一字体中当前字体没有的字符加入进来”，Python API 也提供 font.mergeFonts()。
+
+它 2025-10 还有正式 release。
+
+但它更适合：
+
+打开字体 → merge → 人工检查 → 调 metrics/name/features → Generate
+
+而不是：
+
+给我 A.ttf + B.ttc#2 → 自动解决 UPM/轮廓/VF/字重/命名/hinting → 输出一整套 family。
+
+所以用 FontForge 做人工精修，我会更信它；做可重复批处理，不见得比 Font_Merger 舒服。
+
+Adobe AFDKO 就更“工业级”了。mergefonts 明确支持把 glyph 从一个 font 合入另一个、subset、rename、CID conversion。 AFDKO 5.0.1 是 2026-05-18 发布的，并且项目自身标为 Production/Stable。
+
+但它的设计场景主要是：
+
+“我正在生产一个字体，我知道 glyph set / mapping / CID / feature structure 应该是什么。”
+
+而不是：
+
+“这里有两个成品 OTF/TTF/TTC，请聪明地给我揉成一个。”
+
+因此也不是真正的替代品。
+
+所以我会这样总结：
+
+如果你问的是“有没有代码库/字体工程工具比 Font_Merger 成熟？”——有，fontTools、FontForge、AFDKO 都成熟得多。
+
+如果你问的是“有没有一个现成的、开源的、比 Font_Merger 更成熟且功能更完整的『任意 CJK + Latin 成品字体合并器』？”——我目前也没找到。
+
+目前最合理的技术路线甚至很可能就是：
+
+fontTools 作为底层 + 一层像 Font_Merger 这样的 normalization / policy / validation wrapper。
+
+我反而觉得 Font_Merger 真正该补的下一步，不是换 merger engine，而是加强 成品验证：合并完自动跑 HarfBuzz shaping regression、OTS sanitizer、FontBakery/fontspector，以及对 GSUB/GPOS/GDEF/cmap/UVS/vertical metrics 做 before/after coverage 检查。这样会比换 FontForge/AFDKO 内核更有价值。
+
+如果你愿意，我还可以继续帮你做一版 “2026 字体合并技术栈横向评测”，把 Font_Merger / fonttools.merge / WFM / FontForge / AFDKO 逐项对比到 glyf/CFF/CFF2、TTC、VF、COLR、GSUB、GPOS、GDEF、hinting、UVS、vhea/vmtx 这一层。那样基本可以判断这个项目现在究竟还缺哪些“专业字体工具级”的能力。
+
+用户：[2026/09/22 15:04:30]
+可以，帮我对比 一下。
+
+AI：[2026/10/23 23:42:10]
+可以。我把“成熟”拆成两个维度来看：底层字体工程能力是否成熟，以及“拿两个现成字体，自动合成一个可靠的中西文混排字体”这个具体 workflow 是否成熟。这两个维度的结论差别很大。
+
+先说结论：FontForge、fontTools、AFDKO 的底层能力和历史都远比 Font_Merger 成熟；但如果限定到“自动处理中西文字体、TTC/OTC、UPM、字重、hinting、字符优先级并直接交付成品”这个场景，目前 Font_Merger 的工作流反而已经相当完整。它现在主要缺的不是另一个 merger engine，而是 CFF2/特殊 cmap 与 OpenType 边角表支持，以及工业级 QA/回归验证。Font_Merger 当前已经明确做了 TTC face、UPM 归一化、GSUB/GPOS 合并、纵排度量补齐、CFF→glyf、TrueType VF 静态化和 hinting 来源管理。
+
+能力横向表
+
+这里的 ✅ 是“可作为这个场景的正式能力使用”，⚠️ 是“能做但有前提、需人工或不是核心工作流”，— 是“不适合/当前不支持”。不是项目评分。
+
+能力	Font_Merger	fontTools merge	Warcraft Font Merger	FontForge	Adobe AFDKO
+静态 TTF / glyf	✅	✅	✅	✅	⚠️
+静态 OTF / CFF	✅ 转 glyf	✅，有部分限制	✅ 可转轮廓	✅	✅ 强项
+CFF2 Variable → 静态	— 当前主动拒绝	✅ varLib.instancer 已支持	—	⚠️	✅ 工具链级支持
+保持为 Variable Font 输出	—	⚠️ 不是 merge 主路径	—	⚠️	✅ 生产工具链，但不是任意 VF union
+TTC / OTC 直接选 face	✅	⚠️ 需自行预处理	⚠️	✅	⚠️ otc2otf 后处理
+输入 UPM 不同	✅ 自动 scale_upem	— 要求相同 UPM	✅，但主要缩 glyph	✅ 人工处理	⚠️ 源工程通常预先统一
+多字体字符并集	✅	✅	✅	✅	✅
+明确字符优先级	✅	⚠️ merger 自己解决 duplicate	✅ 输入顺序	⚠️ 人工控制	✅ mapping 驱动
+GSUB / GPOS 合并	✅ fontTools merger	✅	⚠️ 主要保留 base 侧语义	⚠️ 功能丰富但并非完整	⚠️ 通常重新编译 feature
+GDEF / BASE / MATH 等高级表	⚠️ 依赖 fontTools	⚠️	⚠️	⚠️	✅/⚠️ 源工程方式最强
+vhea/vmtx 纵排	✅ 原生保留 + 缺失时补中性数据	✅，但输入不对称需处理	⚠️	✅ 人工	✅ 源工程方式
+TrueType hinting	✅ 明确选择一个来源	⚠️ 基本保留第一字体	⚠️	✅ 可人工处理	⚠️ AFDKO 更强于 PS hint
+VF 字重批量静态化	✅ TrueType VF	✅ instancer，但需自己组织	—	⚠️	✅
+cmap format 14 / UVS	⚠️ 没有显式策略/验证	⚠️	⚠️	⚠️	⚠️
+COLR/CPAL	— 主动拒绝	⚠️ 不是通用 color merger	—	⚠️	—
+CBDT/CBLC / sbix / SVG	— 主动拒绝	⚠️	—	⚠️	—
+family/name/weight 自动整理	✅	⚠️	✅ 基础	✅ 人工	✅ 显式工程配置
+合并后自动完整性检查	⚠️ 基础检查	—	—	⚠️ GUI Validate	⚠️ 多个检查工具
+GUI / 普通用户直接使用	✅	—	⚠️ 脚本/拖放	✅	—
+可复现自动化流水线	✅	✅ 库级	✅	⚠️	✅ 工业工程级
+
+其中 fontTools.merge 官方明确把 GSUB/GPOS 和跨字体 metrics 当作 merger 的核心职责，但也明确规定输入字体必须具有相同 UPM。它甚至会在重复 Unicode 字形不同时通过重命名字形及 locl 来解决冲突。
+
+FontForge 的 Merge Fonts... 和 Python font.mergeFonts() 都是真实存在的成熟能力，因此它当然可以做字体 union；但 FontForge 自己也明确说，它并不支持 GPOS/GSUB/GDEF/BASE 的全部可能形式，例如 GDEF 的部分结构以及 VORG 等仍有缺口。所以它很适合“打开 → 合并 → 人工检查 → 修”，却不意味着它天然比 Font_Merger 更安全地自动保留所有 OpenType 语义。
+
+AFDKO 则更像另一种世界：mergefonts 确实可以把 glyph 从一个字体合入另一个字体，还可以 subset、rename、做 CID 转换；同时整个 AFDKO 有 otc2otf、otf2otc、otf2ttf、buildcff2vf 等工具。可是它的思想是“我是字体制作者，有源工程、mapping、feature source，再重新生成目标字体”，而不是“请无损地把两个任意成品字体自动 union”。
+
+Warcraft Font Merger 则处在另一个极端：产品使用历史、速度和分发成熟度很强。它支持很多输入字体和 Windows/macOS/Linux，而且整个 otfccdump → merge-otd → otfccbuild 流程非常实用。我又看了它当前 merge-otd.cpp：核心操作非常接近“把后续字体未冲突的 cmap + glyph 加到 base”，UPM 不同时转换 glyph 坐标；所以它特别适合补字，但不像 fontTools merger 那样以合并多个来源的完整 OTL 语义作为核心目标。
+
+我这次发现的一个比较重要的新点：CFF2 限制现在值得重新评估
+
+Font_Merger 当前源码是明确硬拒绝：
+
+if "CFF2" in font:
+    raise FontMergerError(
+        "当前 fontTools 不能可靠地静态化 CFF2 可变字体..."
+    )
+
+同时它对普通 VF 调的是 instantiateVariableFont()。
+
+但现在的 fontTools 已经明确包含 CFF2 instancing。当前 varLib.instancer 会专门调用 instantiateCFF2()，并且 instantiateVariableFont() 已经提供 downgradeCFF2=True，完全静态化后还可以把 CFF2 降为普通 CFF；同时它还会处理 gvar/cvar/MVAR/HVAR/VVAR、OTL 和 FeatureVariations。
+
+也就是说，我现在不会说“把 CFF2 支持整个做掉”，但我会说：
+
+这是 Font_Merger 目前最值得重新实验的一条 restriction。
+
+理论上可以变成：
+
+font = instantiateVariableFont(
+    font,
+    limits,
+    inplace=False,
+    optimize=True,
+    downgradeCFF2=True,
+    static=True,
+)
+
+然后：
+
+CFF2 VF → static CFF → 现有 CFF→glyf → merge
+
+这样可以最大程度复用现有 pipeline。
+
+AFDKO 自己的文档也表明 CFF2 Variable Font 已经是正式生产工作流的一部分，而非实验格式。
+
+当然，建议先挂 experimental flag + corpus 测试，而不是直接解除报错。
+
+另一个真正值得注意的 gap：UVS / cmap format 14
+
+这个比“支持更多格式”更隐蔽。
+
+Font_Merger 目前验证输出覆盖时，本质上是：
+
+actual = set((font.getBestCmap() or {}).keys())
+missing = expected_unicodes - actual
+
+另外检查 UPM 和是否残留 fvar。
+
+但 getBestCmap() 主要描述：
+
+Unicode code point → glyph
+
+而 UVS 描述的是：
+
+Unicode code point + Variation Selector → glyph
+
+例如 CJK 的 standardized variation sequences / Ideographic Variation Selector。
+
+所以现在不能直接断言 Font_Merger 会损坏 UVS——fontTools subset/merge 本身可能保留相关记录——但可以确定：
+
+Font_Merger 的字符 ownership 模型和最终 validation 并没有显式覆盖 UVS。
+
+这应该加：
+
+cmap format 14 before → merge → after 对比。
+
+尤其这个项目目标里 CJK 是一等公民，UVS 比 Emoji 彩色字体更值得优先处理。
+
+纵排目前已经做得不错，但 CFF 的 VORG 有一个值得测的角落
+
+现在它对缺少 vhea/vmtx 的输入会合成中性的 vertical metrics，而不是简单删掉所有输入的纵排信息。这个策略很好。
+
+但是 CFF→glyf 的实现同时会删除：
+
+"CFF ", "CFF2", "VORG"
+
+这在格式层面合理，因为 TrueType outline 不继续使用 CFF 的 `VORG`。问题是：
+
+如果原 CFF 的 VORG 包含重要的逐字形 vertical-origin override，这些语义有没有完整落到转换后的 `vmtx`？
+
+当前代码里我没看到显式的 VORG→TrueType vertical metrics 转换。
+
+所以我会把它定性为：
+
+不是已确认 bug，但非常值得做一个真实 CJK vertical-font regression test。
+
+这类问题比一般“能不能打开字体”高级一个层级。
+
+---
+
+## Hinting 这块我反而不建议大改
+
+Font_Merger 的设计是：
+
+一整个 TrueType font 最终只能选择一套 `cvt/fpgm/prep` 全局程序；选中的 hinting 来源排在内部 merge 第一位，其他输入的 glyph instructions 去掉。
+
+这是非常合理的工程取舍。项目自己的说明也明确解释了原因。
+
+因此我不建议试图做到：
+
+“西文保留 Consolas hint，中文保留微软雅黑 hint”
+
+因为两边 glyph bytecode 引用的 CVT index、function number 等很可能不是同一套语义。
+
+`ttfautohint` 可以作为可选 postprocess，但对于 CJK+Latin 不适合作为默认值。这个项目目前的保守策略其实是正确方向。
+
+---
+
+## 如果让我排下一阶段开发优先级
+
+我会按下面顺序做，而不是先追“支持所有字体格式”：
+
+1. 先把成品验证做成真正的 QA pipeline。每个输出自动跑 `ots-sanitize`；它就是专门解析、验证、重新序列化 OpenType 的 sanitizer，而且实际用于 Chromium/Firefox。再用 `hb-shape` 对 Latin、中文、标点、ligature、combining marks、Arabic/Indic 等测试串做 source/merged regression，必要时 `hb-view` 输出图片快照。
+
+2. 增加 UVS / cmap14 检查。不要只验证 `getBestCmap()`；把 Variation Selector mapping、default/non-default UVS 都纳入 before/after invariants。
+
+3. 实验性开放 CFF2 VF 静态化。利用当前 fontTools 的 `instantiateVariableFont(..., downgradeCFF2=True, static=True)`，拿一组 Adobe/Google 的 CFF2 VF corpus 做回归；通过后再从 experimental 变正式。
+
+4. 为高级表建立“支持 / 验证 / 明确拒绝”的 policy。特别是 `BASE`、`MATH`、`JSTF`、`VORG`、复杂 `GDEF`。不要因为 fontTools 能 serialize 就默认等于语义正确；遇到没有测试覆盖的表，warning 甚至明确拒绝，往往比 silent corruption 更专业。
+
+5. 补纵排语义测试。重点检查 `vert/vrt2 + vhea/vmtx + CFF VORG`，用思源宋/黑等真实 CJK OTF 测横排和纵排 shaping。
+
+6. 彩色字体继续拒绝即可。COLRv1 尤其不是“多复制几个 glyph”这么简单，还涉及 Paint graph、palette、ClipList/variation data 与内部 glyph references。除非用户实际强烈需要 emoji/icon 合并，否则投入产出比很低。
+
+7. “输出仍然是 Variable Font”放到很后面。两个 VF 真正 union，要解决 axis mapping、`avar/STAT/gvar/HVAR/VVAR/MVAR`、masters compatibility 和 VariationStore；这已经接近造一个字体编译系统，而不是简单 merger。现在“按目标字重静态化，然后合并”其实是更稳健的产品方案。
+
+### 所以最终我会怎么定位这个项目
+
+我会把 Font_Merger 定义成：
+
+不是最通用的 OpenType 字体编辑/构建系统，而是一个建立在 fontTools 之上的、针对“成品字体 union”进行了大量 normalization 和 policy 封装的工具。
+
+这其实是一个很合理的定位。
+
+`fontTools.merge` 是核心 engine，它很懂 GSUB/GPOS，但甚至要求同 UPM。
+FontForge 是成熟的人工字体编辑器，但高级 OpenType 支持也明确存在边界。
+AFDKO 是专业 foundry/build 工具链，更希望你拥有源文件和 feature source，而不是替你猜两个二进制字体应该怎么融合。
+WFM 是非常成熟的“补字/union”实用工具，但追求的并不是完整 OpenType semantic merge。
+
+所以，Font_Merger 现在离“更成熟”最近的路径，不是再增加 20 个格式 checkbox，而是把“我支持的输入一定有较强证据证明输出没坏”做起来。它现在的输出自检只有 Unicode coverage、UPM、静态化状态；如果再补上 OTS + HarfBuzz + UVS + vertical regression，项目的可信度会明显提升一个档次。
+
+我可以下一步直接基于这份对比，帮你整理一份 Font_Merger 的 GitHub Roadmap/Issues 设计稿，按 P0/P1/P2 拆成可实现任务，并给每项写清楚验收测试和大致代码落点。
