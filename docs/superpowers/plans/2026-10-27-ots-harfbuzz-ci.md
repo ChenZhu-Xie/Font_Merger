@@ -137,4 +137,3 @@
 - [ ] **Step 5: Commit**
 
   Commit: `ci: gate merged fonts with OTS and HarfBuzz`
-

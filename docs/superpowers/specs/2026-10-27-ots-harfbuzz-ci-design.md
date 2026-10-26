@@ -46,4 +46,3 @@ The Linux member of the release matrix installs the same tools after building th
 - FontBakery/Fontspector policy checks.
 - Exhaustive shaping-engine conformance.
 - Installing OTS or HarfBuzz for Windows/macOS release jobs or ordinary users.
-
