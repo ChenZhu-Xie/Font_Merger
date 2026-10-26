@@ -10,6 +10,7 @@ import sys
 import traceback
 from pathlib import Path
 
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
@@ -94,9 +95,75 @@ def create_inputs(work_dir: Path) -> tuple[Path, Path]:
         latin_path,
         family="Release E2E Latin",
         upm=1000,
-        glyph_widths={".notdef": 500, "A": 600},
-        cmap={0x0041: "A"},
+        glyph_widths={
+            ".notdef": 500,
+            "A": 600,
+            "f": 400,
+            "i": 300,
+            "f_i": 650,
+            "acutecomb": 0,
+            "beh": 600,
+            "beh.init": 600,
+            "beh.medi": 600,
+            "beh.fina": 600,
+            "ka": 600,
+            "virama": 0,
+            "ssa": 600,
+            "kssa": 700,
+        },
+        cmap={
+            0x0041: "A",
+            0x0066: "f",
+            0x0069: "i",
+            0x0301: "acutecomb",
+            0x0628: "beh",
+            0x0915: "ka",
+            0x0937: "ssa",
+            0x094D: "virama",
+        },
     )
+    addOpenTypeFeaturesFromString(
+        latin,
+        """
+        languagesystem DFLT dflt;
+        languagesystem latn dflt;
+        languagesystem arab dflt;
+        languagesystem deva dflt;
+
+        markClass acutecomb <anchor 100 500> @TOP_MARKS;
+
+        feature liga {
+            script latn;
+            sub f i by f_i;
+        } liga;
+
+        feature mark {
+            script latn;
+            pos base A <anchor 300 700> mark @TOP_MARKS;
+        } mark;
+
+        feature init {
+            script arab;
+            sub beh by beh.init;
+        } init;
+
+        feature medi {
+            script arab;
+            sub beh by beh.medi;
+        } medi;
+
+        feature fina {
+            script arab;
+            sub beh by beh.fina;
+        } fina;
+
+        feature rlig {
+            script deva;
+            sub ka virama ssa by kssa;
+        } rlig;
+        """,
+    )
+    latin.save(latin_path)
     latin.close()
 
     cjk = build_font(

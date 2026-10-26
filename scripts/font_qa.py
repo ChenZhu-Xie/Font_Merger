@@ -11,8 +11,11 @@ import shutil
 import subprocess
 import sys
 import traceback
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from fontTools.ttLib import TTFont
 
 
 def find_tool(name: str) -> str:
@@ -79,7 +82,11 @@ def _shape_error(case_name: str, detail: str) -> AssertionError:
     return AssertionError(f"HarfBuzz case {case_name}: {detail}")
 
 
-def validate_shape(case: dict[str, object], payload: object) -> None:
+def validate_shape(
+    case: dict[str, object],
+    payload: object,
+    glyph_ids: Mapping[str, int] | None = None,
+) -> None:
     """Check one hb-shape JSON payload against literal semantic expectations."""
     case_name = str(case.get("name", "<unnamed>"))
     if not isinstance(payload, list) or not all(
@@ -88,13 +95,26 @@ def validate_shape(case: dict[str, object], payload: object) -> None:
         raise _shape_error(case_name, "invalid HarfBuzz JSON glyph array")
 
     glyphs = payload
+    names_by_id = (
+        {glyph_id: name for name, glyph_id in glyph_ids.items()}
+        if glyph_ids is not None
+        else {}
+    )
+
+    def semantic_name(value: object) -> object:
+        if isinstance(value, str):
+            match = re.fullmatch(r"gid([0-9]+)", value)
+            if match:
+                return names_by_id.get(int(match.group(1)), value)
+        return value
+
     expected = case.get("expect")
     if not isinstance(expected, dict):
         raise _shape_error(case_name, "invalid expectation JSON object")
 
     expected_glyphs = expected.get("glyphs")
     if expected_glyphs is not None:
-        actual_glyphs = [glyph.get("g") for glyph in glyphs]
+        actual_glyphs = [semantic_name(glyph.get("g")) for glyph in glyphs]
         if actual_glyphs != expected_glyphs:
             raise _shape_error(
                 case_name,
@@ -115,7 +135,7 @@ def validate_shape(case: dict[str, object], payload: object) -> None:
         return
     if not isinstance(positions, dict):
         raise _shape_error(case_name, "positions must be an object")
-    by_name = {glyph.get("g"): glyph for glyph in glyphs}
+    by_name = {semantic_name(glyph.get("g")): glyph for glyph in glyphs}
     for glyph_name, predicates in positions.items():
         if glyph_name not in by_name:
             raise _shape_error(case_name, f"position glyph missing: {glyph_name}")
@@ -178,6 +198,8 @@ def run_qa(font_path: Path, work_dir: Path, corpus_path: Path) -> None:
     )
 
     cases = load_corpus(corpus_path)
+    with TTFont(font_path, lazy=True) as font:
+        glyph_ids = {name: index for index, name in enumerate(font.getGlyphOrder())}
     for case in cases:
         case_name = str(case["name"])
         result = run_external(
@@ -188,7 +210,7 @@ def run_qa(font_path: Path, work_dir: Path, corpus_path: Path) -> None:
             payload: Any = json.loads(result.stdout)
         except json.JSONDecodeError as error:
             raise _shape_error(case_name, f"invalid HarfBuzz JSON: {error}") from error
-        validate_shape(case, payload)
+        validate_shape(case, payload, glyph_ids)
 
     (work_dir / "report.txt").write_text(
         "font QA passed\n"
