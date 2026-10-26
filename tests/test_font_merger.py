@@ -8,6 +8,7 @@ from unittest.mock import patch
 from fontTools.otlLib.builder import buildMathTable
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
+from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
 from Font_Merger import (
     AxisInfo,
@@ -33,6 +34,31 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    @staticmethod
+    def _font_with_uvs(source, destination, entries):
+        with TTFont(source) as font:
+            by_selector = {}
+            for base, selector, glyph_name in entries:
+                by_selector.setdefault(selector, []).append((base, glyph_name))
+            table = CmapSubtable.newSubtable(14)
+            table.platformID = 0
+            table.platEncID = 5
+            table.language = 0
+            table.cmap = {}
+            table.uvsDict = by_selector
+            font["cmap"].tables.append(table)
+            font.save(destination)
+
+    @staticmethod
+    def _uvs_mappings(font):
+        mappings = {}
+        for table in font["cmap"].tables:
+            if table.format == 14:
+                for selector, entries in table.uvsDict.items():
+                    for base, glyph_name in entries:
+                        mappings[(base, selector)] = glyph_name
+        return mappings
+
     @staticmethod
     def _weight_infos():
         latin = SourceInfo(
@@ -356,6 +382,107 @@ class FontMergerTests(TestCase):
                     merged_math_glyph,
                     math.MathVariants.VertGlyphCoverage.glyphs,
                 )
+
+    def test_uvs_only_source_contributes_default_and_non_default_sequences(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            uvs_latin = temp / "uvs-latin.ttf"
+            output = temp / "merged-uvs-only.ttf"
+
+            with TTFont(LATIN) as font:
+                cmap = font.getBestCmap()
+                alternate = cmap[ord("B")]
+                expected_characters = len(cmap)
+            self._font_with_uvs(
+                LATIN,
+                uvs_latin,
+                [
+                    (ord("A"), 0xFE00, alternate),
+                    (ord("A"), 0xFE01, None),
+                ],
+            )
+
+            characters, _glyphs = merge_fonts(
+                [FontSource(LATIN), FontSource(uvs_latin)],
+                output,
+                family="UVS-only contribution",
+                priority="input",
+            )
+
+            with TTFont(output) as merged:
+                mappings = self._uvs_mappings(merged)
+                self.assertEqual(
+                    set(mappings), {(ord("A"), 0xFE00), (ord("A"), 0xFE01)}
+                )
+                self.assertIsNotNone(mappings[(ord("A"), 0xFE00)])
+                self.assertIsNone(mappings[(ord("A"), 0xFE01)])
+                self.assertNotEqual(
+                    mappings[(ord("A"), 0xFE00)],
+                    merged.getBestCmap()[ord("B")],
+                )
+            self.assertEqual(characters, expected_characters)
+
+    def test_uvs_priority_is_independent_of_hinting_merge_order(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            latin_uvs = temp / "latin-uvs.ttf"
+            cjk_uvs = temp / "cjk-uvs.ttf"
+            output = temp / "merged-uvs-priority.ttf"
+
+            with TTFont(LATIN) as latin:
+                latin_cmap = latin.getBestCmap()
+                latin_alternate = latin_cmap[ord("C")]
+                latin_alternate_width = latin["hmtx"][latin_alternate][0]
+            with TTFont(CJK) as cjk:
+                cjk_cmap = cjk.getBestCmap()
+                han = cjk_cmap[0x4E00]
+                han_width = cjk["hmtx"][han][0]
+
+            self._font_with_uvs(
+                LATIN,
+                latin_uvs,
+                [(ord("A"), 0xFE00, latin_alternate)],
+            )
+            self._font_with_uvs(
+                CJK,
+                cjk_uvs,
+                [
+                    (ord("A"), 0xFE00, han),
+                    (ord("A"), 0xFE01, han),
+                    (ord("A"), 0xFE02, None),
+                    (0x4E00, 0xE0100, None),
+                ],
+            )
+
+            # Auto priority chooses Latin for duplicate characters and UVS, while
+            # auto hinting puts CJK first in the internal fontTools merge order.
+            merge_fonts(
+                [FontSource(cjk_uvs), FontSource(latin_uvs)],
+                output,
+                family="UVS priority",
+            )
+
+            with TTFont(output) as merged:
+                mappings = self._uvs_mappings(merged)
+                self.assertEqual(
+                    set(mappings),
+                    {
+                        (ord("A"), 0xFE00),
+                        (ord("A"), 0xFE01),
+                        (ord("A"), 0xFE02),
+                        (0x4E00, 0xE0100),
+                    },
+                )
+                self.assertEqual(
+                    merged["hmtx"][mappings[(ord("A"), 0xFE00)]][0],
+                    latin_alternate_width,
+                )
+                self.assertEqual(
+                    merged["hmtx"][mappings[(ord("A"), 0xFE01)]][0],
+                    han_width,
+                )
+                self.assertIsNone(mappings[(ord("A"), 0xFE02)])
+                self.assertIsNone(mappings[(0x4E00, 0xE0100)])
 
 
 if __name__ == "__main__":

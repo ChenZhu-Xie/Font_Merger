@@ -16,7 +16,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from fontTools.merge import Merger
 from fontTools.merge.base import mergeObjects
@@ -28,6 +28,7 @@ from fontTools.subset import Options as SubsetOptions
 from fontTools.subset import Subsetter
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables import otTables
+from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
@@ -38,6 +39,9 @@ COLLECTION_MAGIC = b"ttcf"
 COLOR_TABLES = {"COLR", "CPAL", "CBDT", "CBLC", "sbix", "SVG "}
 INVALIDATED_TABLES = {"DSIG"}
 HINT_TABLES = {"cvt ", "cvar", "fpgm", "prep", "hdmx", "VDMX", "LTSH"}
+
+VariationSequence = tuple[int, int]
+VariationMappings = dict[VariationSequence, str | None]
 
 
 def enable_legacy_math_table_merging() -> None:
@@ -140,6 +144,7 @@ class SourceInfo:
     axes: tuple[AxisInfo, ...]
     instances: tuple[InstanceInfo, ...]
     weight: int
+    variation_sequences: frozenset[VariationSequence] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -302,6 +307,7 @@ def inspect_source(source: FontSource) -> SourceInfo:
             axes,
             instances,
             weight,
+            frozenset(read_variation_sequences(font, source.label)),
         )
     finally:
         font.close()
@@ -688,7 +694,67 @@ def reject_color_font(font: TTFont, label: str) -> None:
         )
 
 
-def subset_to_unicodes(font: TTFont, unicodes: set[int]) -> None:
+def read_variation_sequences(
+    font: TTFont, label: str | None = None
+) -> VariationMappings:
+    """Return cmap format 14 mappings keyed by (base, variation selector)."""
+    mappings: VariationMappings = {}
+    if "cmap" not in font:
+        return mappings
+
+    for table in font["cmap"].tables:
+        if table.format != 14:
+            continue
+        for selector, entries in table.uvsDict.items():
+            for base, glyph_name in entries:
+                sequence = (base, selector)
+                previous = mappings.get(sequence)
+                if sequence in mappings and previous != glyph_name:
+                    source = f"（{label}）" if label else ""
+                    raise FontMergerError(
+                        "同一字体包含冲突的 Unicode variation sequence"
+                        f"{source}：U+{base:04X} U+{selector:04X}"
+                    )
+                mappings[sequence] = glyph_name
+    return mappings
+
+
+def remove_variation_sequence_subtables(font: TTFont) -> None:
+    """Remove format 14 before merge; it is rebuilt from explicit ownership."""
+    if "cmap" not in font:
+        return
+    cmap = font["cmap"]
+    cmap.tables = [table for table in cmap.tables if table.format != 14]
+    cmap.numSubTables = len(cmap.tables)
+
+
+def add_variation_sequence_subtable(
+    font: TTFont, mappings: Mapping[VariationSequence, str | None]
+) -> None:
+    """Install one canonical Unicode cmap format 14 subtable."""
+    remove_variation_sequence_subtables(font)
+    if not mappings:
+        return
+
+    by_selector: dict[int, list[tuple[int, str | None]]] = {}
+    for (base, selector), glyph_name in sorted(mappings.items()):
+        by_selector.setdefault(selector, []).append((base, glyph_name))
+
+    table = CmapSubtable.newSubtable(14)
+    table.platformID = 0
+    table.platEncID = 5
+    table.language = 0
+    table.cmap = {}
+    table.uvsDict = by_selector
+    font["cmap"].tables.append(table)
+    font["cmap"].numSubTables = len(font["cmap"].tables)
+
+
+def subset_to_unicodes(
+    font: TTFont,
+    unicodes: set[int],
+    variation_mappings: Mapping[VariationSequence, str | None] | None = None,
+) -> None:
     options = SubsetOptions()
     options.drop_tables.extend(["MERG", "meta"])
     options.layout_features = ["*"]
@@ -700,8 +766,53 @@ def subset_to_unicodes(font: TTFont, unicodes: set[int]) -> None:
     options.recommended_glyphs = True
     options.recalc_timestamp = False
     subsetter = Subsetter(options=options)
-    subsetter.populate(unicodes=unicodes)
+    variation_glyphs = {
+        glyph_name
+        for glyph_name in (variation_mappings or {}).values()
+        if glyph_name is not None
+    }
+    subsetter.populate(unicodes=unicodes, glyphs=variation_glyphs)
     subsetter.subset(font)
+
+    missing_glyphs = variation_glyphs - set(font.getGlyphOrder())
+    if missing_glyphs:
+        raise FontMergerError(
+            "UVS 子集化失败：缺少引用字形 " + ", ".join(sorted(missing_glyphs))
+        )
+
+
+def map_variation_sequences_to_merged_glyphs(
+    merged: TTFont,
+    glyph_orders: Sequence[Sequence[str]],
+    mappings_per_font: Sequence[Mapping[VariationSequence, str | None]],
+) -> VariationMappings:
+    """Map prepared-font glyph names to the names assigned by fontTools.merge."""
+    output_order = merged.getGlyphOrder()
+    expected_length = sum(len(order) for order in glyph_orders)
+    if expected_length != len(output_order):
+        raise FontMergerError("UVS 自检失败：无法对应合并前后的字形顺序")
+
+    result: VariationMappings = {}
+    offset = 0
+    for glyph_order, mappings in zip(glyph_orders, mappings_per_font):
+        output_slice = output_order[offset : offset + len(glyph_order)]
+        rename_map = dict(zip(glyph_order, output_slice))
+        for sequence, glyph_name in mappings.items():
+            if sequence in result:
+                raise FontMergerError("UVS 自检失败：variation sequence 来源重复")
+            if glyph_name is None:
+                result[sequence] = None
+            else:
+                try:
+                    result[sequence] = rename_map[glyph_name]
+                except KeyError as exc:
+                    base, selector = sequence
+                    raise FontMergerError(
+                        "UVS 自检失败：找不到引用字形 "
+                        f"U+{base:04X} U+{selector:04X} -> {glyph_name}"
+                    ) from exc
+        offset += len(glyph_order)
+    return result
 
 
 def convert_cff_to_glyf(font: TTFont, max_err: float) -> None:
@@ -965,7 +1076,10 @@ def _save_prepared(font: TTFont, path: Path) -> None:
 
 
 def validate_output(
-    path: Path, expected_unicodes: set[int], target_upm: int
+    path: Path,
+    expected_unicodes: set[int],
+    expected_variation_sequences: Mapping[VariationSequence, int | None],
+    target_upm: int,
 ) -> tuple[int, int]:
     with TTFont(path, lazy=False) as font:
         actual = set((font.getBestCmap() or {}).keys())
@@ -975,6 +1089,42 @@ def validate_output(
             raise FontMergerError(
                 f"输出自检失败：缺少 {len(missing)} 个字符（{examples}）"
             )
+        actual_variation_sequences = read_variation_sequences(font)
+        missing_sequences = set(expected_variation_sequences) - set(
+            actual_variation_sequences
+        )
+        if missing_sequences:
+            examples = ", ".join(
+                f"U+{base:04X} U+{selector:04X}"
+                for base, selector in sorted(missing_sequences)[:10]
+            )
+            raise FontMergerError(
+                "输出自检失败：缺少 "
+                f"{len(missing_sequences)} 个 Unicode variation sequence（{examples}）"
+            )
+        unexpected_sequences = set(actual_variation_sequences) - set(
+            expected_variation_sequences
+        )
+        if unexpected_sequences:
+            examples = ", ".join(
+                f"U+{base:04X} U+{selector:04X}"
+                for base, selector in sorted(unexpected_sequences)[:10]
+            )
+            raise FontMergerError(
+                "输出自检失败：多出 "
+                f"{len(unexpected_sequences)} 个 Unicode variation sequence（{examples}）"
+            )
+        for sequence, expected_glyph_id in expected_variation_sequences.items():
+            glyph_name = actual_variation_sequences[sequence]
+            actual_glyph_id = (
+                None if glyph_name is None else font.getGlyphID(glyph_name)
+            )
+            if actual_glyph_id != expected_glyph_id:
+                base, selector = sequence
+                raise FontMergerError(
+                    "输出自检失败：Unicode variation sequence 映射不一致（"
+                    f"U+{base:04X} U+{selector:04X}）"
+                )
         if font["head"].unitsPerEm != target_upm:
             raise FontMergerError("输出自检失败：UPM 不一致")
         if "fvar" in font:
@@ -1012,7 +1162,9 @@ def merge_fonts(
     hint_index = resolve_hinting_source(hinting_source, infos, priority_order, pair)
 
     selected_unicodes: list[set[int]] = [set() for _ in infos]
+    selected_variation_sequences: list[set[VariationSequence]] = [set() for _ in infos]
     claimed: set[int] = set()
+    claimed_variation_sequences: set[VariationSequence] = set()
     expected: set[int] = set()
     for index in priority_order:
         selected = set(infos[index].unicodes) - claimed
@@ -1020,14 +1172,24 @@ def merge_fonts(
         claimed.update(infos[index].unicodes)
         expected.update(selected)
 
-    contributing = [index for index in priority_order if selected_unicodes[index]]
+        selected_uvs = (
+            set(infos[index].variation_sequences) - claimed_variation_sequences
+        )
+        selected_variation_sequences[index] = selected_uvs
+        claimed_variation_sequences.update(infos[index].variation_sequences)
+
+    contributing = [
+        index
+        for index in priority_order
+        if selected_unicodes[index] or selected_variation_sequences[index]
+    ]
     if len(contributing) < 2:
-        raise FontMergerError("除优先字体外，没有输入字体能补充新字符")
+        raise FontMergerError("除优先字体外，没有输入字体能补充新字符或 UVS")
     if hint_index is not None and hint_index not in contributing:
         if hinting_source.casefold() == "auto":
             hint_index = contributing[0]
         else:
-            raise FontMergerError("指定的 hinting 来源没有为输出字体提供字符")
+            raise FontMergerError("指定的 hinting 来源没有为输出字体提供字符或 UVS")
 
     chosen_instance_name, explicit_instance = choose_instance_name(
         infos,
@@ -1106,6 +1268,8 @@ def merge_fonts(
     with tempfile.TemporaryDirectory(prefix="font-merger-") as temp_name:
         temp_dir = Path(temp_name)
         prepared_paths: list[Path] = []
+        prepared_glyph_orders: list[list[str]] = []
+        prepared_variation_mappings: list[VariationMappings] = []
 
         for position, index in enumerate(internal_order):
             source = sources[index]
@@ -1122,12 +1286,21 @@ def merge_fonts(
                     )
                 )
                 selected = selected_unicodes[index]
+                source_variation_mappings = read_variation_sequences(font, source.label)
+                selected_uvs = {
+                    sequence: source_variation_mappings[sequence]
+                    for sequence in selected_variation_sequences[index]
+                }
                 LOG.info(
-                    "采用 %d 个字符，忽略 %d 个由更高优先级字体提供的字符",
+                    "采用 %d 个字符和 %d 个 UVS；忽略 %d 个字符和 %d 个"
+                    "由更高优先级字体提供的 UVS",
                     len(selected),
+                    len(selected_uvs),
                     len(infos[index].unicodes) - len(selected),
+                    len(infos[index].variation_sequences) - len(selected_uvs),
                 )
-                subset_to_unicodes(font, selected)
+                subset_to_unicodes(font, selected, selected_uvs)
+                remove_variation_sequence_subtables(font)
 
                 if "CFF " in font or "CFF2" in font:
                     LOG.info("将 PostScript 三次曲线轮廓转换为 TrueType 二次曲线")
@@ -1144,6 +1317,8 @@ def merge_fonts(
                 strip_invalidated_tables(font)
 
                 prepared = temp_dir / f"input-{len(prepared_paths):03d}.ttf"
+                prepared_glyph_orders.append(list(font.getGlyphOrder()))
+                prepared_variation_mappings.append(selected_uvs)
                 _save_prepared(font, prepared)
                 prepared_paths.append(prepared)
             except Exception:
@@ -1160,6 +1335,14 @@ def merge_fonts(
         merged = Merger(options=options).merge([str(path) for path in prepared_paths])
         merged.recalcTimestamp = False
         merged.recalcBBoxes = True
+        merged_variation_mappings = map_variation_sequences_to_merged_glyphs(
+            merged, prepared_glyph_orders, prepared_variation_mappings
+        )
+        add_variation_sequence_subtable(merged, merged_variation_mappings)
+        expected_variation_sequences = {
+            sequence: (None if glyph_name is None else merged.getGlyphID(glyph_name))
+            for sequence, glyph_name in merged_variation_mappings.items()
+        }
 
         assert style_metadata is not None
         requested_weight = output_weight
@@ -1176,7 +1359,12 @@ def merge_fonts(
         try:
             merged.save(temporary_output, reorderTables=False)
             merged.close()
-            counts = validate_output(temporary_output, expected, target_upm)
+            counts = validate_output(
+                temporary_output,
+                expected,
+                expected_variation_sequences,
+                target_upm,
+            )
             os.replace(temporary_output, output)
         finally:
             merged.close()
