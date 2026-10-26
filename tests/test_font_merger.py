@@ -12,10 +12,13 @@ from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
 from Font_Merger import (
     AxisInfo,
+    FontMergerError,
     FontSource,
     InstanceInfo,
+    LOG,
     SourceInfo,
     VERSION,
+    assess_table_policy,
     collection_faces,
     configure_standard_streams,
     legacy_names,
@@ -26,6 +29,7 @@ from Font_Merger import (
     plan_weights,
     resolve_hinting_source,
     style_flags,
+    summarize_table_policy,
     variable_details,
 )
 
@@ -36,6 +40,42 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    def test_table_policy_always_rejects_unsafe_layout_technologies(self):
+        font = TTFont()
+        font["morx"] = newTable("morx")
+        with self.assertRaisesRegex(FontMergerError, r"morx.*拒绝"):
+            assess_table_policy(font, "unsafe.ttf")
+
+    def test_warn_table_policy_reports_and_drops_unknown_and_legacy_kern(self):
+        font = TTFont()
+        font["kern"] = newTable("kern")
+        font["ZZZZ"] = newTable("ZZZZ")
+        with self.assertLogs(LOG, level="WARNING") as captured:
+            tags, drops = assess_table_policy(font, "legacy.ttf")
+        self.assertEqual(tags, {"kern", "ZZZZ"})
+        self.assertEqual(drops, {"kern", "ZZZZ"})
+        self.assertIn("kern", "\n".join(captured.output))
+        self.assertIn("ZZZZ", "\n".join(captured.output))
+
+    def test_strict_table_policy_rejects_unverified_tables(self):
+        font = TTFont()
+        font["BASE"] = newTable("BASE")
+        with self.assertRaisesRegex(FontMergerError, r"strict.*BASE"):
+            assess_table_policy(font, "advanced.ttf", "strict")
+
+    def test_table_policy_summary_records_every_disposition(self):
+        summary = summarize_table_policy(
+            [
+                {"BASE", "GSUB", "STAT", "cmap"},
+                {"GSUB", "cmap"},
+            ],
+            {"BASE", "GSUB", "cmap", "name"},
+        )
+        self.assertEqual(summary["merged"], ("GSUB",))
+        self.assertEqual(summary["rebuilt"], ("cmap", "name"))
+        self.assertEqual(summary["dropped"], ("STAT",))
+        self.assertEqual(summary["unverified"], ("BASE",))
+
     def test_standard_streams_are_configured_for_utf8_output(self):
         stdout = StringIO()
         stderr = StringIO()

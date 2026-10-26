@@ -107,6 +107,10 @@
 报告问题时可运行 `./font-merger-windows-x64.exe --diagnostics`，附上程序、Python、fontTools
 和平台版本信息。
 
+高级 OpenType 表采用显式策略。默认 `--table-policy warn` 会在日志中报告被保留、合并、重建、
+丢弃或尚未验证的表；`--table-policy strict` 会拒绝含未验证、未知或会损失语义的表。彩色、AAT
+和 Graphite 等当前无法安全重写的表在两种模式下都会被拒绝。
+
 Linux 首次下载后先赋予执行权限，再使用 Linux 可执行文件：
 
 ```bash
@@ -312,6 +316,12 @@ Put the program and fonts in one folder, open a terminal there, and run:
 When reporting a problem, run `./font-merger-windows-x64.exe --diagnostics` and
 include the reported application, Python, fontTools, and platform versions.
 
+Advanced OpenType tables follow an explicit policy. The default
+`--table-policy warn` logs tables that were preserved, merged, rebuilt, dropped,
+or remain unverified. `--table-policy strict` rejects unverified, unknown, or
+semantically lossy tables. Tables that cannot currently be rewritten safely,
+including color, AAT, and Graphite data, are rejected in both modes.
+
 On Linux, make the downloaded binary executable once, then run the Linux build:
 
 ```bash
@@ -516,6 +526,10 @@ Release 頁面也會提供 `SHA256SUMS.txt`，可用來驗證下載檔案的 SHA
 
 回報問題時可執行 `./font-merger-windows-x64.exe --diagnostics`，並附上程式、Python、fontTools
 與平台版本資訊。
+
+進階 OpenType 表採用明確策略。預設的 `--table-policy warn` 會在記錄中列出保留、合併、重建、
+捨棄或尚未驗證的表；`--table-policy strict` 會拒絕含未驗證、未知或會損失語意的表。彩色、AAT
+與 Graphite 等目前無法安全重寫的表，在兩種模式下都會被拒絕。
 
 Linux 第一次下載後先賦予執行權限，再使用 Linux 執行檔：
 
