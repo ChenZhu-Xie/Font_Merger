@@ -242,7 +242,7 @@ def run(executable: Path, work_dir: Path) -> None:
     )
     diagnostics = parse_diagnostics(diagnostics_result.stdout)
 
-    run_and_record(
+    merge_result = run_and_record(
         [
             str(executable),
             str(latin),
@@ -255,11 +255,15 @@ def run(executable: Path, work_dir: Path) -> None:
             "Release E2E Merged",
             "--style",
             "Regular",
+            "--table-policy",
+            "strict",
             "--output",
             str(output),
         ],
         work_dir / "merge.log",
     )
+    if "表处理摘要：" not in merge_result.stderr:
+        raise AssertionError("packaged merge did not report the table policy summary")
     validate_output(output)
     (work_dir / "success.txt").write_text(
         "release executable end-to-end validation passed\n"

@@ -3,7 +3,7 @@
 本文档记录已经结合当前源码、回归测试和代表性字体样本复核过的改进方向。原始外部调研材料归档于
 [`research/2026-10-23-font-merger-landscape.txt`](research/2026-10-23-font-merger-landscape.txt)。
 
-更新时间：2026-10-24；代码基线：v2.3.8。
+更新时间：2026-10-27；代码基线：v2.3.8。
 
 ## 当前定位
 
@@ -57,9 +57,19 @@ fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描
 
 ## P1：显式的表处理策略和 QA
 
-- 为非核心表记录 `preserved / merged / rebuilt / dropped / unsupported / unverified` 状态。
-- 不应在默认模式中隐藏所有 fontTools warning；仅定向过滤已知无害的重复消息。
-- 输出验证应完整 decompile 各表，而不只访问 best cmap、UPM 和 `fvar`。
+### 已实现：表策略
+
+- 每次合并记录 `preserved / merged / rebuilt / dropped / unverified` 摘要；`unsupported` 表在输入
+  预检阶段给出表标签并拒绝，不再进入可能损坏输出的流程。
+- 默认 `--table-policy warn` 明确警告 legacy `kern`、未知表和仅依赖 fontTools、尚无项目语义回归
+  的表；`--table-policy strict` 对这些情况直接报错。数字签名、静态化后的 variation 表、`STAT`
+  等已失效元数据则按已记录的固定策略丢弃。
+- 彩色/位图、AAT 和 Graphite 表因带有当前流程无法安全重写的 glyph/layout 引用而始终拒绝。
+- 默认保留 fontTools 的 WARNING 级诊断，不再把整个 logger 隐藏到 ERROR。
+- 输出保存后逐表强制 decompile，再检查 cmap、UVS、UPM 和静态化状态。
+
+### 后续 QA
+
 - CI 优先引入 OTS sanitizer 和 HarfBuzz shaping corpus。它们适合发布门禁，不宜成为普通用户
   每次合并都必须安装和运行的依赖。
 - FontBakery/Fontspector 更适合作为可选深度检查；合并字体可能有大量与 foundry policy 有关、

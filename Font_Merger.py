@@ -39,9 +39,95 @@ VERSION = "2.3.8"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
-COLOR_TABLES = {"COLR", "CPAL", "CBDT", "CBLC", "sbix", "SVG "}
+COLOR_TABLES = {
+    "COLR",
+    "CPAL",
+    "CBDT",
+    "CBLC",
+    "EBDT",
+    "EBLC",
+    "EBSC",
+    "sbix",
+    "SVG ",
+}
+UNSUPPORTED_LAYOUT_TABLES = {
+    # Apple Advanced Typography tables carry glyph references that neither
+    # fontTools.merge nor this project rewrites safely.
+    "ankr",
+    "bsln",
+    "feat",
+    "just",
+    "kerx",
+    "lcar",
+    "mort",
+    "morx",
+    "opbd",
+    "prop",
+    "trak",
+    # Graphite shaping tables likewise form one interdependent glyph model.
+    "Feat",
+    "Glat",
+    "Gloc",
+    "Silf",
+    "Sill",
+}
+UNSUPPORTED_TABLES = COLOR_TABLES | UNSUPPORTED_LAYOUT_TABLES
 INVALIDATED_TABLES = {"DSIG"}
 HINT_TABLES = {"cvt ", "cvar", "fpgm", "prep", "hdmx", "VDMX", "LTSH"}
+
+# These tables are deliberately absent from a static union.  Some contain
+# metadata for the original font, others depend on the old glyph order or are
+# consumed by an earlier conversion step.
+INTENTIONALLY_DROPPED_TABLES = {
+    "DSIG",
+    "FFTM",
+    "LTSH",
+    "MERG",
+    "PCLT",
+    "STAT",
+    "VDMX",
+    "VORG",
+    "avar",
+    "cvar",
+    "fvar",
+    "gvar",
+    "hdmx",
+    "meta",
+    "HVAR",
+    "MVAR",
+    "VVAR",
+}
+RISKY_DROPPED_TABLES = {
+    # fontTools.merge has no policy for the legacy kern table.  OpenType GPOS
+    # kerning is supported; legacy-only kerning must never disappear silently.
+    "kern",
+}
+REBUILT_TABLES = {"OS/2", "cmap", "head", "loca", "maxp", "name", "post"}
+VERIFIED_MERGED_TABLES = {
+    "GDEF",
+    "GPOS",
+    "GSUB",
+    "MATH",
+    "gasp",
+    "glyf",
+    "hhea",
+    "hmtx",
+    "vhea",
+    "vmtx",
+    "cvt ",
+    "fpgm",
+    "prep",
+}
+UNVERIFIED_MERGED_TABLES = {"BASE", "JSTF"}
+KNOWN_TABLES = (
+    UNSUPPORTED_TABLES
+    | INTENTIONALLY_DROPPED_TABLES
+    | RISKY_DROPPED_TABLES
+    | REBUILT_TABLES
+    | VERIFIED_MERGED_TABLES
+    | UNVERIFIED_MERGED_TABLES
+    | {"CFF ", "CFF2"}
+)
 
 VariationSequence = tuple[int, int]
 VariationMappings = dict[VariationSequence, str | None]
@@ -63,6 +149,102 @@ def runtime_diagnostics() -> tuple[tuple[str, str], ...]:
 
 def format_runtime_diagnostics() -> str:
     return "\n".join(f"{key}={value}" for key, value in runtime_diagnostics())
+
+
+def format_table_tags(tags: Iterable[str]) -> str:
+    return ", ".join(sorted(tag.rstrip() for tag in tags))
+
+
+def assess_table_policy(
+    font: TTFont, label: str, policy: str = "warn"
+) -> tuple[set[str], set[str]]:
+    """Validate one input's table inventory and return explicit drop tags."""
+    if policy not in {"warn", "strict"}:
+        raise FontMergerError(f"未知表策略：{policy}")
+
+    tags = set(font.keys()) - {"GlyphOrder"}
+    unsupported = tags & UNSUPPORTED_TABLES
+    if unsupported:
+        raise FontMergerError(
+            f"{label} 包含不支持安全重写的表（{format_table_tags(unsupported)}）；"
+            "拒绝生成可能损坏的输出"
+        )
+
+    unverified = tags & UNVERIFIED_MERGED_TABLES
+    risky_drops = tags & RISKY_DROPPED_TABLES
+    unknown = tags - KNOWN_TABLES
+    strict_problems = unverified | risky_drops | unknown
+    if policy == "strict" and strict_problems:
+        raise FontMergerError(
+            f"{label} 的 strict 表策略拒绝未验证或会丢失的表（"
+            f"{format_table_tags(strict_problems)}）"
+        )
+
+    if unverified:
+        LOG.warning(
+            "%s 包含仅由 fontTools 合并、尚无项目语义回归的表：%s",
+            label,
+            format_table_tags(unverified),
+        )
+    if risky_drops:
+        LOG.warning(
+            "%s 包含无法安全合并、将明确丢弃的表：%s",
+            label,
+            format_table_tags(risky_drops),
+        )
+    if unknown:
+        LOG.warning(
+            "%s 包含没有显式支持策略、将明确丢弃的表：%s",
+            label,
+            format_table_tags(unknown),
+        )
+
+    ordinary_drops = tags & INTENTIONALLY_DROPPED_TABLES
+    if ordinary_drops:
+        LOG.info(
+            "%s 将丢弃已失效或不适用于静态合并输出的表：%s",
+            label,
+            format_table_tags(ordinary_drops),
+        )
+    return tags, ordinary_drops | risky_drops | unknown
+
+
+def summarize_table_policy(
+    source_tables: Sequence[set[str]], output_tables: set[str]
+) -> dict[str, tuple[str, ...]]:
+    """Classify every observed sfnt table by its actual output disposition."""
+    statuses: dict[str, list[str]] = {
+        "preserved": [],
+        "merged": [],
+        "rebuilt": [],
+        "dropped": [],
+        "unverified": [],
+    }
+    input_tables = set().union(*source_tables) if source_tables else set()
+    all_tables = input_tables | output_tables
+    for tag in sorted(all_tables):
+        if tag in REBUILT_TABLES and tag in output_tables:
+            status = "rebuilt"
+        elif tag in UNVERIFIED_MERGED_TABLES and tag in output_tables:
+            status = "unverified"
+        elif tag not in output_tables:
+            status = "dropped"
+        else:
+            sources = sum(tag in tables for tables in source_tables)
+            if sources == 0:
+                status = "rebuilt"
+            else:
+                status = "merged" if sources > 1 else "preserved"
+        statuses[status].append(tag)
+    return {key: tuple(value) for key, value in statuses.items()}
+
+
+def log_table_policy_summary(summary: Mapping[str, Sequence[str]]) -> None:
+    parts = []
+    for status in ("preserved", "merged", "rebuilt", "dropped", "unverified"):
+        tags = summary.get(status, ())
+        parts.append(f"{status}=[{format_table_tags(tags)}]")
+    LOG.info("表处理摘要：%s", "; ".join(parts))
 
 
 def configure_standard_streams() -> None:
@@ -783,9 +965,10 @@ def subset_to_unicodes(
     font: TTFont,
     unicodes: set[int],
     variation_mappings: Mapping[VariationSequence, str | None] | None = None,
+    drop_tables: Iterable[str] = (),
 ) -> None:
     options = SubsetOptions()
-    options.drop_tables.extend(["MERG", "meta"])
+    options.drop_tables.extend(sorted(set(drop_tables) | {"MERG", "meta"}))
     options.layout_features = ["*"]
     options.name_IDs = ["*"]
     options.name_legacy = True
@@ -1111,6 +1294,13 @@ def validate_output(
     target_upm: int,
 ) -> tuple[int, int]:
     with TTFont(path, lazy=False) as font:
+        for tag in sorted(set(font.keys()) - {"GlyphOrder"}):
+            try:
+                font[tag]
+            except Exception as exc:
+                raise FontMergerError(
+                    f"输出自检失败：无法完整解析 {tag.rstrip()} 表：{exc}"
+                ) from exc
         actual = set((font.getBestCmap() or {}).keys())
         missing = expected_unicodes - actual
         if missing:
@@ -1174,11 +1364,14 @@ def merge_fonts(
     source_weights: Sequence[int | None] | None = None,
     inspected_sources: Sequence[SourceInfo] | None = None,
     output_weight: int | None = None,
+    table_policy: str = "warn",
 ) -> tuple[int, int]:
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
     if curve_error <= 0:
         raise FontMergerError("--curve-error 必须大于 0")
+    if table_policy not in {"warn", "strict"}:
+        raise FontMergerError(f"未知表策略：{table_policy}")
 
     axes = axes or {}
     infos = list(inspected_sources or (inspect_source(source) for source in sources))
@@ -1299,6 +1492,8 @@ def merge_fonts(
         prepared_paths: list[Path] = []
         prepared_glyph_orders: list[list[str]] = []
         prepared_variation_mappings: list[VariationMappings] = []
+        source_table_inventories: list[set[str]] = []
+        policy_drop_tables: set[str] = set(INVALIDATED_TABLES)
 
         for position, index in enumerate(internal_order):
             source = sources[index]
@@ -1306,6 +1501,11 @@ def merge_fonts(
             font = open_source(source)
             try:
                 reject_color_font(font, source.label)
+                source_tables, source_policy_drops = assess_table_policy(
+                    font, source.label, table_policy
+                )
+                source_table_inventories.append(source_tables)
+                policy_drop_tables.update(source_policy_drops)
                 source_axes = dict(axes)
                 if source_weights is not None and source_weights[index] is not None:
                     source_axes["wght"] = float(source_weights[index])
@@ -1328,7 +1528,12 @@ def merge_fonts(
                     len(infos[index].unicodes) - len(selected),
                     len(infos[index].variation_sequences) - len(selected_uvs),
                 )
-                subset_to_unicodes(font, selected, selected_uvs)
+                subset_to_unicodes(
+                    font,
+                    selected,
+                    selected_uvs,
+                    drop_tables=source_policy_drops,
+                )
                 remove_variation_sequence_subtables(font)
 
                 if "CFF " in font or "CFF2" in font:
@@ -1360,7 +1565,7 @@ def merge_fonts(
                 f"输入字体均不包含这些轴：{', '.join(sorted(unknown_axes))}"
             )
         LOG.info("合并 %d 个已完成字符归属分配的字体", len(prepared_paths))
-        options = MergeOptions(drop_tables=list(INVALIDATED_TABLES))
+        options = MergeOptions(drop_tables=sorted(policy_drop_tables))
         merged = Merger(options=options).merge([str(path) for path in prepared_paths])
         merged.recalcTimestamp = False
         merged.recalcBBoxes = True
@@ -1383,6 +1588,10 @@ def merge_fonts(
         set_font_names(merged, chosen_family, chosen_style, chosen_weight)
         apply_style_metadata(merged, style_metadata, chosen_style, chosen_weight)
         refresh_metadata(merged)
+        output_tables = set(merged.keys()) - {"GlyphOrder"}
+        log_table_policy_summary(
+            summarize_table_policy(source_table_inventories, output_tables)
+        )
 
         temporary_output = output.with_name(f".{output.name}.font-merger.tmp")
         try:
@@ -1432,6 +1641,7 @@ def merge_font_family(
     weights: str = "auto",
     weight_match: str = "nearest",
     max_weight_gap: int | None = None,
+    table_policy: str = "warn",
 ) -> list[MergeResult]:
     """Merge one explicit style, or automatically build a static font family."""
     axes = dict(axes or {})
@@ -1451,6 +1661,7 @@ def merge_font_family(
             priority=priority,
             hinting_source=hinting_source,
             instance=instance,
+            table_policy=table_policy,
         )
         selected_style = style or instance or style_for_weight(axes.get("wght", 400))
         selected_weight = int(
@@ -1498,6 +1709,7 @@ def merge_font_family(
             source_weights=source_weights,
             inspected_sources=infos,
             output_weight=weight,
+            table_policy=table_policy,
         )
         results.append(
             MergeResult(target.resolve(), output_style, weight, characters, glyphs)
@@ -1578,6 +1790,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="OTF 曲线转换最大误差（默认 1.0）",
     )
     parser.add_argument(
+        "--table-policy",
+        choices=("warn", "strict"),
+        default="warn",
+        help=(
+            "高级表策略：warn 明确记录未验证/丢弃表，strict 拒绝未知、"
+            "未验证或有语义损失的表"
+            "（默认 warn；已知不安全表始终拒绝）"
+        ),
+    )
+    parser.add_argument(
         "--list",
         dest="list_font",
         type=Path,
@@ -1606,7 +1828,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     LOG.setLevel(logging.INFO)
     if not args.verbose:
-        logging.getLogger("fontTools").setLevel(logging.ERROR)
+        logging.getLogger("fontTools").setLevel(logging.WARNING)
 
     try:
         if args.diagnostics:
@@ -1648,6 +1870,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             weights=args.weights,
             weight_match=args.weight_match,
             max_weight_gap=args.max_weight_gap,
+            table_policy=args.table_policy,
         )
         for result in results:
             print(
