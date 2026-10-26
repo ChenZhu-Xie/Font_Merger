@@ -50,16 +50,17 @@ class FontQATests(TestCase):
         with self.assertRaisesRegex(AssertionError, r"latin-ligature.*glyphs"):
             validate_shape(case, payload)
 
-    def test_glyph_names_resolve_against_gid_output(self):
+    def test_glyph_ids_are_checked_for_post_format_three_output(self):
         case = {
             "name": "latin-ligature",
-            "expect": {"glyphs": ["f_i"]},
+            "expect": {"gids": [4]},
         }
         payload = [
-            {"g": "gid4", "cl": 0, "dx": 0, "dy": 0, "ax": 650, "ay": 0}
+            {"g": "gid5", "cl": 0, "dx": 0, "dy": 0, "ax": 650, "ay": 0}
         ]
 
-        validate_shape(case, payload, {"f_i": 4})
+        with self.assertRaisesRegex(AssertionError, r"latin-ligature.*gids"):
+            validate_shape(case, payload, {"glyph00004": 4, "acutecomb": 5})
 
     def test_rtl_clusters_are_checked(self):
         case = {

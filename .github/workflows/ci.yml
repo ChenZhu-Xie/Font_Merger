@@ -48,3 +48,37 @@ jobs:
         run: python -m pip install ".[lint]"
       - name: Run Ruff
         run: ruff check .
+
+  font-qa:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install package and font QA tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes opentype-sanitizer libharfbuzz-bin
+          python -m pip install -e .
+      - name: Build merged source fixture
+        run: >-
+          python scripts/release_e2e.py
+          --source-script Font_Merger.py
+          --work-dir build/source-e2e
+      - name: Validate merged font with OTS and HarfBuzz
+        run: >-
+          python scripts/font_qa.py
+          --font build/source-e2e/e2e-merged.ttf
+          --work-dir build/source-e2e/font-qa
+      - name: Upload font QA failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-font-qa-failure
+          path: build/source-e2e
+          if-no-files-found: ignore

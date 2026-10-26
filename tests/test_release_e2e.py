@@ -8,7 +8,7 @@ from unittest import TestCase, skipUnless
 from fontTools.ttLib import TTFont
 
 from scripts.font_qa import run_qa
-from scripts.release_e2e import create_inputs
+from scripts.release_e2e import create_inputs, run_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +21,16 @@ def feature_tags(font: TTFont, table_tag: str) -> set[str]:
 
 
 class ReleaseE2ETests(TestCase):
+    def test_source_cli_e2e_reports_non_frozen(self):
+        with TemporaryDirectory(prefix="source e2e ") as temporary:
+            work_dir = Path(temporary)
+
+            run_source(ROOT / "Font_Merger.py", work_dir)
+
+            self.assertTrue((work_dir / "e2e-merged.ttf").is_file())
+            report = (work_dir / "success.txt").read_text(encoding="utf-8")
+            self.assertIn("frozen=false", report)
+
     def test_synthetic_inputs_compile_expected_layout_features(self):
         with TemporaryDirectory() as temporary:
             latin_path, _ = create_inputs(Path(temporary))

@@ -233,7 +233,9 @@ def run_and_record(
     return result
 
 
-def parse_diagnostics(output: str) -> dict[str, str]:
+def parse_diagnostics(
+    output: str, *, expected_frozen: bool = True
+) -> dict[str, str]:
     diagnostics = {}
     for line in output.splitlines():
         if "=" in line:
@@ -252,8 +254,12 @@ def parse_diagnostics(output: str) -> dict[str, str]:
     missing = required - set(diagnostics)
     if missing:
         raise AssertionError(f"diagnostics missing keys: {sorted(missing)}")
-    if diagnostics["frozen"] != "true":
-        raise AssertionError("packaged executable did not report frozen=true")
+    expected = str(expected_frozen).lower()
+    if diagnostics["frozen"] != expected:
+        raise AssertionError(
+            f"merge command reported frozen={diagnostics['frozen']}; "
+            f"expected {expected}"
+        )
     return diagnostics
 
 
@@ -298,20 +304,23 @@ def validate_output(path: Path) -> None:
             raise AssertionError("MATH glyph coverage was not preserved")
 
 
-def run(executable: Path, work_dir: Path) -> None:
+def _run_command(
+    command_prefix: list[str], work_dir: Path, *, expected_frozen: bool
+) -> None:
     work_dir.mkdir(parents=True, exist_ok=True)
-    executable = resolve_executable(executable)
     latin, cjk = create_inputs(work_dir)
     output = work_dir / "e2e-merged.ttf"
 
     diagnostics_result = run_and_record(
-        [str(executable), "--diagnostics"], work_dir / "diagnostics.log"
+        [*command_prefix, "--diagnostics"], work_dir / "diagnostics.log"
     )
-    diagnostics = parse_diagnostics(diagnostics_result.stdout)
+    diagnostics = parse_diagnostics(
+        diagnostics_result.stdout, expected_frozen=expected_frozen
+    )
 
     merge_result = run_and_record(
         [
-            str(executable),
+            *command_prefix,
             str(latin),
             str(cjk),
             "--priority",
@@ -333,20 +342,40 @@ def run(executable: Path, work_dir: Path) -> None:
         raise AssertionError("packaged merge did not report the table policy summary")
     validate_output(output)
     (work_dir / "success.txt").write_text(
-        "release executable end-to-end validation passed\n"
+        "merge command end-to-end validation passed\n"
         f"font_merger={diagnostics['font_merger']}\n"
-        f"fonttools={diagnostics['fonttools']}\n",
+        f"fonttools={diagnostics['fonttools']}\n"
+        f"frozen={diagnostics['frozen']}\n",
         encoding="utf-8",
+    )
+
+
+def run(executable: Path, work_dir: Path) -> None:
+    executable = resolve_executable(executable)
+    _run_command([str(executable)], work_dir, expected_frozen=True)
+
+
+def run_source(source_script: Path, work_dir: Path) -> None:
+    source_script = source_script.expanduser().resolve()
+    if not source_script.is_file():
+        raise FileNotFoundError(f"Font_Merger source script not found: {source_script}")
+    _run_command(
+        [sys.executable, str(source_script)], work_dir, expected_frozen=False
     )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--executable", required=True, type=Path)
+    command = parser.add_mutually_exclusive_group(required=True)
+    command.add_argument("--executable", type=Path)
+    command.add_argument("--source-script", type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
     args = parser.parse_args()
     try:
-        run(args.executable, args.work_dir.expanduser().resolve())
+        if args.executable is not None:
+            run(args.executable, args.work_dir.expanduser().resolve())
+        else:
+            run_source(args.source_script, args.work_dir.expanduser().resolve())
     except Exception:
         args.work_dir.mkdir(parents=True, exist_ok=True)
         failure = traceback.format_exc()

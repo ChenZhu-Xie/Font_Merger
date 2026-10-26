@@ -3,21 +3,21 @@
     "name": "scalar-cmap",
     "text": "A一",
     "expect": {
-      "glyphs": ["A", "han"]
+      "gids": [1, 15]
     }
   },
   {
     "name": "non-default-uvs",
     "text": "A︀",
     "expect": {
-      "glyphs": ["han.alt"]
+      "gids": [16]
     }
   },
   {
     "name": "default-uvs",
     "text": "A︁",
     "expect": {
-      "glyphs": ["A"]
+      "gids": [1]
     }
   },
   {
@@ -26,7 +26,7 @@
     "script": "latn",
     "features": "liga=1",
     "expect": {
-      "glyphs": ["f_i"],
+      "gids": [4],
       "clusters": [0]
     }
   },
@@ -35,7 +35,7 @@
     "text": "Á",
     "script": "latn",
     "expect": {
-      "glyphs": ["A", "acutecomb"],
+      "gids": [1, 5],
       "clusters": [0, 0],
       "positions": {
         "acutecomb": {
@@ -51,7 +51,7 @@
     "direction": "rtl",
     "script": "arab",
     "expect": {
-      "glyphs": ["beh.fina", "beh.medi", "beh.init"],
+      "gids": [9, 8, 7],
       "clusters": [2, 1, 0]
     }
   },
@@ -61,7 +61,7 @@
     "direction": "ltr",
     "script": "deva",
     "expect": {
-      "glyphs": ["kssa"],
+      "gids": [13],
       "clusters": [0]
     }
   }

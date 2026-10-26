@@ -108,6 +108,15 @@ def validate_shape(
                 return names_by_id.get(int(match.group(1)), value)
         return value
 
+    def glyph_id(value: object) -> int | None:
+        if isinstance(value, str):
+            match = re.fullmatch(r"gid([0-9]+)", value)
+            if match:
+                return int(match.group(1))
+            if glyph_ids is not None:
+                return glyph_ids.get(value)
+        return None
+
     expected = case.get("expect")
     if not isinstance(expected, dict):
         raise _shape_error(case_name, "invalid expectation JSON object")
@@ -119,6 +128,15 @@ def validate_shape(
             raise _shape_error(
                 case_name,
                 f"glyphs mismatch: expected {expected_glyphs}, got {actual_glyphs}",
+            )
+
+    expected_gids = expected.get("gids")
+    if expected_gids is not None:
+        actual_gids = [glyph_id(glyph.get("g")) for glyph in glyphs]
+        if actual_gids != expected_gids:
+            raise _shape_error(
+                case_name,
+                f"gids mismatch: expected {expected_gids}, got {actual_gids}",
             )
 
     expected_clusters = expected.get("clusters")

@@ -73,7 +73,7 @@
 
 **Interfaces:**
 - Consumes: `create_inputs(work_dir: Path) -> tuple[Path, Path]` and Font_Merger's existing merge CLI.
-- Produces: source fonts whose merged output has deterministic Latin ligature, mark positioning, Arabic joining, and Indic conjunct behavior matching the corpus.
+- Produces: source fonts whose merged output has deterministic glyph IDs for Latin ligature, mark positioning, Arabic joining, and Indic conjunct behavior matching the corpus.
 
 - [ ] **Step 1: Write a failing fixture semantics test**
 
