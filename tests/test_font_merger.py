@@ -15,6 +15,7 @@ from Font_Merger import (
     FontSource,
     InstanceInfo,
     SourceInfo,
+    VERSION,
     collection_faces,
     legacy_names,
     merge_font_family,
@@ -131,6 +132,19 @@ class FontMergerTests(TestCase):
             self.assertEqual(main(["--list", str(LATIN)]), 0)
         self.assertTrue(output.getvalue().startswith("font\t"))
         self.assertNotIn("#0", output.getvalue())
+
+    def test_diagnostics_report_runtime_and_dependency_versions(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["--diagnostics"]), 0)
+        diagnostics = dict(
+            line.split("=", 1) for line in output.getvalue().splitlines()
+        )
+        self.assertEqual(diagnostics["font_merger"], VERSION)
+        self.assertRegex(diagnostics["python"], r"^\d+\.\d+\.\d+")
+        self.assertRegex(diagnostics["fonttools"], r"^\d+\.\d+")
+        self.assertIn(diagnostics["pointer_bits"], {"32", "64"})
+        self.assertEqual(diagnostics["frozen"], "false")
 
     def test_automatic_weight_plan_matches_variable_font_to_static_weight(self):
         infos = self._weight_infos()

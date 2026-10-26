@@ -81,6 +81,15 @@ function New-ReleaseBuild {
     if ($LASTEXITCODE -ne 0) {
         throw "Release CLI smoke test failed with exit code $LASTEXITCODE."
     }
+    $diagnostics = Join-Path $releaseDir "font-merger-windows-x64-diagnostics.txt"
+    & (Join-Path $releaseDir "font-merger-windows-x64.exe") --diagnostics |
+        Set-Content -LiteralPath $diagnostics -Encoding utf8
+    if ($LASTEXITCODE -ne 0) {
+        throw "Release CLI diagnostics failed with exit code $LASTEXITCODE."
+    }
+    Invoke-Python (Join-Path $repoRoot "scripts\release_e2e.py") `
+        --executable (Join-Path $releaseDir "font-merger-windows-x64.exe") `
+        --work-dir (Join-Path $buildRoot "release-e2e\font-merger-windows-x64")
 }
 
 function New-DebugBuild {

@@ -24,6 +24,7 @@ from Font_Merger import (
     collection_faces,
     is_collection,
     merge_font_family,
+    runtime_diagnostics,
     parse_axis,
     parse_source,
 )
@@ -1797,6 +1798,8 @@ class FontMergerGUI:
         self.status_label.configure(foreground=PALETTES["Footer"]["accent"])
         self.toggle_log(force_open=True)
         self.append_log(self.t("task_start"))
+        for key, value in runtime_diagnostics():
+            self.append_log(f"[INFO] {key}={value}")
         kwargs = {
             "sources": sources,
             "output": Path(self.output.get()),
