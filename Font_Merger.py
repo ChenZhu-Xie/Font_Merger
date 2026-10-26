@@ -65,6 +65,14 @@ def format_runtime_diagnostics() -> str:
     return "\n".join(f"{key}={value}" for key, value in runtime_diagnostics())
 
 
+def configure_standard_streams() -> None:
+    """Keep localized CLI output usable when Windows redirects the streams."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+
+
 def enable_legacy_math_table_merging() -> None:
     """Backport fontTools 4.67 MATH merge maps for Python 3.10.
 
@@ -1589,6 +1597,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_standard_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     logging.basicConfig(

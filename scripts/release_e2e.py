@@ -159,6 +159,7 @@ def run_and_record(
         encoding="utf-8",
     )
     if result.returncode:
+        print(log_path.read_text(encoding="utf-8"), file=sys.stderr)
         raise RuntimeError(
             f"command exited with {result.returncode}; see {log_path.name}"
         )

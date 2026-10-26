@@ -3,7 +3,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fontTools.otlLib.builder import buildMathTable
 from fontTools.ttLib import TTCollection, TTFont, newTable
@@ -17,6 +17,7 @@ from Font_Merger import (
     SourceInfo,
     VERSION,
     collection_faces,
+    configure_standard_streams,
     legacy_names,
     merge_font_family,
     merge_fonts,
@@ -35,6 +36,20 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    def test_standard_streams_are_configured_for_utf8_output(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        stdout.reconfigure = Mock()
+        stderr.reconfigure = Mock()
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            configure_standard_streams()
+        stdout.reconfigure.assert_called_once_with(
+            encoding="utf-8", errors="backslashreplace"
+        )
+        stderr.reconfigure.assert_called_once_with(
+            encoding="utf-8", errors="backslashreplace"
+        )
+
     @staticmethod
     def _font_with_uvs(source, destination, entries):
         with TTFont(source) as font:
