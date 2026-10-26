@@ -41,6 +41,11 @@ jobs:
         run: python scripts/fetch_gui_font.py --release-assets
       - name: Install build dependencies
         run: python -m pip install ".[build]"
+      - name: Install Linux font QA tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes opentype-sanitizer libharfbuzz-bin
       - name: Remove unused Nerd Font symbols
         if: runner.os == 'Windows'
         run: python scripts/prepare_gui_font.py
@@ -81,6 +86,12 @@ jobs:
           python scripts/release_e2e.py
           --executable "dist/${{ matrix.artifact }}"
           --work-dir "build/release-e2e/${{ matrix.artifact }}"
+      - name: Validate Linux merged font with OTS and HarfBuzz
+        if: runner.os == 'Linux'
+        run: >-
+          python scripts/font_qa.py
+          --font "build/release-e2e/${{ matrix.artifact }}/e2e-merged.ttf"
+          --work-dir "build/release-e2e/${{ matrix.artifact }}/font-qa"
       - name: Upload end-to-end failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v7

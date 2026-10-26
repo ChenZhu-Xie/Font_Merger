@@ -68,12 +68,21 @@ fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描
 - 默认保留 fontTools 的 WARNING 级诊断，不再把整个 logger 隐藏到 ERROR。
 - 输出保存后逐表强制 decompile，再检查 cmap、UVS、UPM 和静态化状态。
 
+### 已实现：OTS + HarfBuzz CI 门禁
+
+- 普通 PR CI 在独立的 Ubuntu 22.04 job 中合并 synthetic fixture，再用 OTS 解析/重写输出，并用
+  HarfBuzz JSON 验证 scalar cmap、default/non-default UVS、Latin ligature、combining mark、Arabic
+  joining 和 Indic conjunct。
+- Linux 发布构建会对打包后的真实 exe 产物运行同一 fixture 和同一验证脚本；Windows/macOS 继续
+  执行发布版真实合并测试，但不安装 Linux 发行版工具。
+- OTS 与 HarfBuzz 只作为 CI 依赖，不进入最终用户的 Python 或 exe 运行依赖。失败时保留命令、
+  exit code、stdout/stderr、工具版本和具体 corpus case 日志。
+
 ### 后续 QA
 
-- CI 优先引入 OTS sanitizer 和 HarfBuzz shaping corpus。它们适合发布门禁，不宜成为普通用户
-  每次合并都必须安装和运行的依赖。
 - FontBakery/Fontspector 更适合作为可选深度检查；合并字体可能有大量与 foundry policy 有关、
   但不代表数据损坏的报告。
+- 仍需补充两个 MATH 来源发生字体级常量冲突，以及 CJK 纵排/VORG 的语义回归。
 
 ### 重点回归语料
 
@@ -111,5 +120,6 @@ bug，但应该成为 corpus regression，尤其覆盖 exceptional records 和 U
 1. UVS/cmap 14 全流程支持和回归测试。
 2. 发布版可执行文件的真实合并测试与依赖诊断。
 3. 表处理摘要、warning 策略、完整 decompile 验证。
-4. OTS + HarfBuzz corpus CI，补 MATH/纵排边界测试。
-5. experimental CFF2 静态化。
+4. 已完成：OTS + HarfBuzz corpus CI。
+5. 补 MATH 多来源/不同 UPM 与纵排/VORG 边界测试。
+6. experimental CFF2 静态化。

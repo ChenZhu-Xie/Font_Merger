@@ -1,0 +1,70 @@
+[
+  {
+    "name": "scalar-cmap",
+    "text": "A一",
+    "expect": {
+      "gids": [1, 15]
+    }
+  },
+  {
+    "name": "non-default-uvs",
+    "text": "A︀",
+    "expect": {
+      "gids": [16]
+    }
+  },
+  {
+    "name": "default-uvs",
+    "text": "A︁",
+    "expect": {
+      "gids": [1]
+    }
+  },
+  {
+    "name": "latin-ligature",
+    "text": "fi",
+    "script": "latn",
+    "features": "liga=1",
+    "expect": {
+      "gids": [4],
+      "clusters": [0]
+    }
+  },
+  {
+    "name": "combining-mark",
+    "text": "Á",
+    "script": "latn",
+    "expect": {
+      "gids": [1, 5],
+      "clusters": [0, 0],
+      "positions": {
+        "acutecomb": {
+          "dx": -400,
+          "dy": 200,
+          "ax": 0,
+          "ay": 0
+        }
+      }
+    }
+  },
+  {
+    "name": "arabic-joining",
+    "text": "ببب",
+    "direction": "rtl",
+    "script": "arab",
+    "expect": {
+      "gids": [9, 8, 7],
+      "clusters": [2, 1, 0]
+    }
+  },
+  {
+    "name": "indic-conjunct",
+    "text": "क्ष",
+    "direction": "ltr",
+    "script": "deva",
+    "expect": {
+      "gids": [13],
+      "clusters": [0]
+    }
+  }
+]
