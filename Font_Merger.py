@@ -11,13 +11,16 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import platform
 import re
+import struct
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
+import fontTools
 from fontTools.merge import Merger
 from fontTools.merge.base import mergeObjects
 from fontTools.merge.options import Options as MergeOptions
@@ -42,6 +45,32 @@ HINT_TABLES = {"cvt ", "cvar", "fpgm", "prep", "hdmx", "VDMX", "LTSH"}
 
 VariationSequence = tuple[int, int]
 VariationMappings = dict[VariationSequence, str | None]
+
+
+def runtime_diagnostics() -> tuple[tuple[str, str], ...]:
+    """Return stable, user-shareable runtime and dependency information."""
+    return (
+        ("font_merger", VERSION),
+        ("python", platform.python_version()),
+        ("python_implementation", platform.python_implementation()),
+        ("fonttools", fontTools.__version__),
+        ("platform", platform.platform()),
+        ("machine", platform.machine() or "unknown"),
+        ("pointer_bits", str(struct.calcsize("P") * 8)),
+        ("frozen", str(bool(getattr(sys, "frozen", False))).lower()),
+    )
+
+
+def format_runtime_diagnostics() -> str:
+    return "\n".join(f"{key}={value}" for key, value in runtime_diagnostics())
+
+
+def configure_standard_streams() -> None:
+    """Keep localized CLI output usable when Windows redirects the streams."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
 
 
 def enable_legacy_math_table_merging() -> None:
@@ -1558,11 +1587,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="显示 fontTools 详细日志"
     )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="输出程序、Python、fontTools 和平台诊断信息后退出",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    configure_standard_streams()
     parser = build_parser()
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -1574,6 +1609,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         logging.getLogger("fontTools").setLevel(logging.ERROR)
 
     try:
+        if args.diagnostics:
+            print(format_runtime_diagnostics())
+            return 0
         if args.list_font:
             list_path = args.list_font.expanduser().resolve()
             collection = is_collection(list_path)

@@ -104,6 +104,9 @@
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
+报告问题时可运行 `./font-merger-windows-x64.exe --diagnostics`，附上程序、Python、fontTools
+和平台版本信息。
+
 Linux 首次下载后先赋予执行权限，再使用 Linux 可执行文件：
 
 ```bash
@@ -306,6 +309,9 @@ Put the program and fonts in one folder, open a terminal there, and run:
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
 
+When reporting a problem, run `./font-merger-windows-x64.exe --diagnostics` and
+include the reported application, Python, fontTools, and platform versions.
+
 On Linux, make the downloaded binary executable once, then run the Linux build:
 
 ```bash
@@ -507,6 +513,9 @@ Release 頁面也會提供 `SHA256SUMS.txt`，可用來驗證下載檔案的 SHA
 ```powershell
 ./font-merger-windows-x64.exe "Inconsolata-Medium.ttf" "LXGWBright-Medium.ttf" --family "Inconsolata-LXGWMono" --style Medium -o "Inconsolata-LXGWMono-Medium.ttf"
 ```
+
+回報問題時可執行 `./font-merger-windows-x64.exe --diagnostics`，並附上程式、Python、fontTools
+與平台版本資訊。
 
 Linux 第一次下載後先賦予執行權限，再使用 Linux 執行檔：
 

@@ -3,7 +3,7 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fontTools.otlLib.builder import buildMathTable
 from fontTools.ttLib import TTCollection, TTFont, newTable
@@ -15,7 +15,9 @@ from Font_Merger import (
     FontSource,
     InstanceInfo,
     SourceInfo,
+    VERSION,
     collection_faces,
+    configure_standard_streams,
     legacy_names,
     merge_font_family,
     merge_fonts,
@@ -34,6 +36,20 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    def test_standard_streams_are_configured_for_utf8_output(self):
+        stdout = StringIO()
+        stderr = StringIO()
+        stdout.reconfigure = Mock()
+        stderr.reconfigure = Mock()
+        with patch("sys.stdout", stdout), patch("sys.stderr", stderr):
+            configure_standard_streams()
+        stdout.reconfigure.assert_called_once_with(
+            encoding="utf-8", errors="backslashreplace"
+        )
+        stderr.reconfigure.assert_called_once_with(
+            encoding="utf-8", errors="backslashreplace"
+        )
+
     @staticmethod
     def _font_with_uvs(source, destination, entries):
         with TTFont(source) as font:
@@ -131,6 +147,19 @@ class FontMergerTests(TestCase):
             self.assertEqual(main(["--list", str(LATIN)]), 0)
         self.assertTrue(output.getvalue().startswith("font\t"))
         self.assertNotIn("#0", output.getvalue())
+
+    def test_diagnostics_report_runtime_and_dependency_versions(self):
+        output = StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(["--diagnostics"]), 0)
+        diagnostics = dict(
+            line.split("=", 1) for line in output.getvalue().splitlines()
+        )
+        self.assertEqual(diagnostics["font_merger"], VERSION)
+        self.assertRegex(diagnostics["python"], r"^\d+\.\d+\.\d+")
+        self.assertRegex(diagnostics["fonttools"], r"^\d+\.\d+")
+        self.assertIn(diagnostics["pointer_bits"], {"32", "64"})
+        self.assertEqual(diagnostics["frozen"], "false")
 
     def test_automatic_weight_plan_matches_variable_font_to_static_weight(self):
         infos = self._weight_infos()
