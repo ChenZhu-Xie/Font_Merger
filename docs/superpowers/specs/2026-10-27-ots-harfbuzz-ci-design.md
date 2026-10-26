@@ -24,7 +24,7 @@ The existing synthetic release fixture is extended with deterministic OpenType l
 
 `scripts/release_e2e.py` remains responsible for constructing inputs, invoking Font_Merger, and validating fontTools-visible structure. It gains deterministic GSUB/GPOS fixtures and leaves the merged font at its current stable path.
 
-`tests/data/shaping-corpus.json` is the single source of expected shaping results. Expectations use literal glyph IDs for the deterministic fixture, cluster ordering, and positioning predicates rather than a complete textual snapshot. Glyph IDs avoid false failures when the merged font's `post` format 3 table intentionally omits glyph names, while still catching lost or corrupted layout behavior.
+`tests/data/shaping-corpus.json` is the single source of expected shaping results. Expectations use literal glyph IDs for the deterministic fixture, cluster ordering, and exact mark offsets/advances rather than a complete textual snapshot. Exact offsets distinguish the fixture's GPOS result from HarfBuzz's non-GPOS fallback positioning. Glyph IDs avoid false failures when the merged font's `post` format 3 table intentionally omits glyph names, while still catching lost or corrupted layout behavior.
 
 ## CI Integration
 

@@ -161,6 +161,15 @@ def validate_shape(
             raise _shape_error(case_name, f"position predicates invalid: {glyph_name}")
         glyph = by_name[glyph_name]
         for predicate, wanted in predicates.items():
+            if predicate in {"dx", "dy", "ax", "ay"}:
+                actual = glyph.get(predicate)
+                if actual != wanted:
+                    raise _shape_error(
+                        case_name,
+                        f"{glyph_name} {predicate} mismatch: "
+                        f"expected {wanted}, got {actual}",
+                    )
+                continue
             if predicate not in {"dx_nonzero", "dy_nonzero"} or wanted is not True:
                 raise _shape_error(
                     case_name, f"unsupported position predicate: {predicate}"

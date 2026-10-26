@@ -39,8 +39,10 @@
       "clusters": [0, 0],
       "positions": {
         "acutecomb": {
-          "dx_nonzero": true,
-          "dy_nonzero": true
+          "dx": -400,
+          "dy": 200,
+          "ax": 0,
+          "ay": 0
         }
       }
     }

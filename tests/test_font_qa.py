@@ -104,6 +104,31 @@ class FontQATests(TestCase):
         ):
             validate_shape(case, payload)
 
+    def test_exact_mark_position_rejects_harfbuzz_fallback(self):
+        case = {
+            "name": "combining-mark",
+            "expect": {
+                "gids": [1, 5],
+                "positions": {"acutecomb": {"dx": -400, "dy": 200}},
+            },
+        }
+        payload = [
+            {"g": "gid1", "cl": 0, "dx": 0, "dy": 0, "ax": 600, "ay": 0},
+            {
+                "g": "gid5",
+                "cl": 0,
+                "dx": -350,
+                "dy": 762,
+                "ax": 0,
+                "ay": 0,
+            },
+        ]
+
+        with self.assertRaisesRegex(
+            AssertionError, r"combining-mark.*acutecomb.*dx.*expected -400.*got -350"
+        ):
+            validate_shape(case, payload, {"A": 1, "acutecomb": 5})
+
 
 if __name__ == "__main__":
     import unittest
