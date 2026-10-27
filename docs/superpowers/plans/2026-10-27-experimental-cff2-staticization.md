@@ -6,7 +6,7 @@
 
 **Architecture:** Extend `instantiate_if_variable` with an opt-in CFF2 path that fully pins axes, requests CFF downgrade, and validates postconditions. Thread the option through the merge APIs and CLI, then add generated-font and real-corpus CI coverage.
 
-**Tech Stack:** Python 3.10+, fontTools 4.58.5+, unittest, GitHub Actions, OTS, HarfBuzz
+**Tech Stack:** Python 3.10+, fontTools 4.65.0+, unittest, GitHub Actions, OTS, HarfBuzz
 
 **Spec:** `docs/superpowers/specs/2026-10-27-experimental-cff2-staticization-design.md`
 
@@ -16,7 +16,7 @@
 - A successful CFF2 instance contains neither `CFF2` nor `fvar` before outline conversion.
 - Upstream failures never fall back and must report source, coordinates, fontTools version, and original error.
 - TrueType VF behavior and the static glyf output contract remain unchanged.
-- Python 3.10 remains supported with fontTools `>=4.58.5,<4.66`.
+- Python 3.10 remains supported with fontTools `>=4.65.0,<4.66`.
 
 ## Review Focus
 
@@ -80,7 +80,7 @@
 - [ ] Write failing script tests for pinned download verification, source CFF2 detection, merge invocation, and static output validation.
 - [ ] Run focused tests and verify failure because the corpus runner is absent.
 - [ ] Implement the corpus runner and add it to `font-qa`; upload its diagnostics on failure.
-- [ ] Raise the Python 3.10 fontTools floor to 4.58.5 and document the flag, limits, and completed roadmap item in all README languages.
+- [ ] Raise the Python 3.10 fontTools floor to 4.65.0 and document the flag, limits, and completed roadmap item in all README languages.
 - [ ] Run focused tests, Ruff, `git diff --check`, and the full unit suite; expect PASS (local external-tool/corpus checks may be explicitly skipped when unavailable).
 - [ ] Commit the task.
 

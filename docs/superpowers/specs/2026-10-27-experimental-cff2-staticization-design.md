@@ -29,8 +29,9 @@ static CFF font before the existing CFF-to-glyf conversion and merge pipeline.
 
 - Default behavior continues to reject CFF2 variable fonts.
 - Python 3.10 remains supported.
-- The supported fontTools floor becomes 4.58.5: downgrade support appeared in
-  4.52, while 4.58.1 and 4.58.5 contain relevant CFF2-instancer fixes.
+- The supported fontTools floor becomes 4.65.0. Earlier releases can downgrade
+  CFF2, but 4.65.0 is the first Python 3.10-compatible release verified here to
+  preserve usable CharStrings/glyph-order state for the following CFF-to-glyf step.
 - CFF2 failures are fatal for the current output and leave no partial result.
 - Existing TrueType variable-font behavior remains unchanged.
 

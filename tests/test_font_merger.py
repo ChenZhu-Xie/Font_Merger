@@ -281,6 +281,11 @@ class FontMergerTests(TestCase):
 
     @staticmethod
     def _glyph_bounds(font, glyph_name):
+        if "CFF " in font:
+            pen = BoundsPen(None)
+            top_dict = font["CFF "].cff.topDictIndex[0]
+            top_dict.CharStrings[glyph_name].draw(pen)
+            return pen.bounds
         glyph_set = font.getGlyphSet()
         pen = BoundsPen(glyph_set)
         glyph_set[glyph_name].draw(pen)
@@ -479,7 +484,7 @@ class FontMergerTests(TestCase):
                     self.assertNotIn("fvar", font)
                     self.assertIn("CFF ", font)
                     observed[tuple(location.items())] = self._glyph_bounds(
-                        font, "variable"
+                        font, font.getBestCmap()[0x2603]
                     )
                     self.assertEqual(
                         observed[tuple(location.items())], expected_bounds
