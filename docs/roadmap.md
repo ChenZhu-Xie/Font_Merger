@@ -99,14 +99,19 @@ fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描
 - CJK CFF 字体的 `vert/vrt2 + vhea/vmtx + VORG`。
 - Latin ligature、combining mark，以及 Arabic/Indic 等复杂 shaping 样例。
 
-## P2：实验性 CFF2 可变字体静态化
+## 已完成：实验性 CFF2 可变字体静态化
 
 当前 fontTools 可以通过 `instantiateVariableFont(..., downgradeCFF2=True, static=True)` 将代表性的
 CFF2 VF 静态化为 CFF；实测 Source Serif 4 可继续经过现有 CFF→glyf 和 merge 流程。但上游仍有
 CFF2 instancing 的未解决失败案例，因此不应直接移除限制并宣称完整支持。
 
-建议先放在显式 experimental flag 后，使用 Adobe/Google CFF2 VF corpus 覆盖默认/自定义轴实例，
-并分别测试 Python 3.10 兼容依赖路径和 Python 3.11+ 当前依赖路径。失败必须中止并给出清晰诊断。
+现已通过显式 `--experimental-cff2-staticize` 开关提供该路径，默认仍拒绝 CFF2 VF。实现复用既有
+命名实例、自定义轴和自动字重选择，完整固定所有轴并要求 `CFF2 → CFF` 降级成功，随后进入现有
+`CFF → glyf` 流程。失败诊断包含字体、轴坐标、fontTools 版本和原始异常，且不会生成部分输出。
+
+生成式 CFF2 回归覆盖默认/自定义轴的不同轮廓、后置条件和错误路径；CI 另下载固定 SHA-256 的
+Adobe Source Serif 4 CFF2 VF，并以 OTS + HarfBuzz 验证真实输出。该能力仍标为 experimental，
+因为上游已知失败案例意味着测试通过不等同于支持所有 CFF2 VF。
 
 ## 已完成：纵排与 VORG 回归
 
@@ -135,4 +140,4 @@ UPM 和转换后 VORG 移除。该测试在修复前可稳定观察到 vertical 
 4. 已完成：OTS + HarfBuzz corpus CI。
 5. 已完成：MATH 多来源/不同 UPM。
 6. 已完成：纵排/VORG→glyf/vmtx 语义回归与修复。
-7. experimental CFF2 静态化。
+7. 已完成：带显式开关、生成式回归和 Adobe corpus CI 的 experimental CFF2 静态化。

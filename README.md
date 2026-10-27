@@ -176,6 +176,12 @@ TTC / OTC 是字体集合。先查看其中的字体：
 
 如果同时指定命名实例和轴坐标（例如 `--instance Bold --axis wght=500`），显式轴坐标仍覆盖该实例的同名轴，但输出样式保留显式实例名 Bold；需要只覆盖命名而不依赖源字体存在 Bold 实例时，优先使用 `--style Bold`。
 
+CFF2 可变字体目前仅提供实验性静态化。默认仍会拒绝这类输入；确认接受上游 fontTools 仍可能失败的风险后，可在 CLI 显式添加 `--experimental-cff2-staticize`，或在 Python API 传入 `experimental_cff2_staticize=True`。程序会固定所有轴、将 CFF2 降级为静态 CFF，再沿用现有的 CFF→glyf 合并流程；任何静态化或降级失败都会中止，不会静默改用其他实例。输出仍是含 TrueType `glyf` 轮廓的静态字体，并非 CFF/PostScript 输出 OTF。
+
+```powershell
+./font-merger-windows-x64.exe "SourceSerif4Variable-Roman.otf" "CJK.ttf" --experimental-cff2-staticize --axis wght=700 --axis opsz=20 --style Bold -o "Merged-Bold.ttf"
+```
+
 只需一个字重时明确指定实例：
 
 ```powershell
@@ -387,6 +393,12 @@ For legacy applications that match fonts by Regular / Bold naming rather than nu
 
 When both a named instance and axis coordinates are given (for example, `--instance Bold --axis wght=500`), explicit axis values still override the matching coordinates from the instance, while the output style keeps the explicitly requested instance name Bold. If you only need to override naming and do not want to require a Bold named instance in every variable input, prefer `--style Bold`.
 
+CFF2 variable fonts currently have experimental staticization support only. They remain rejected by default; after accepting that upstream fontTools may still fail on some inputs, opt in with `--experimental-cff2-staticize` in the CLI or `experimental_cff2_staticize=True` in the Python API. The program pins every axis, downgrades CFF2 to static CFF, and then uses the existing CFF-to-glyf merge path. Any instancing or downgrade failure aborts instead of silently selecting another instance. The result is still a static font with TrueType `glyf` outlines, not a CFF/PostScript-outline OTF.
+
+```powershell
+./font-merger-windows-x64.exe "SourceSerif4Variable-Roman.otf" "CJK.ttf" --experimental-cff2-staticize --axis wght=700 --axis opsz=20 --style Bold -o "Merged-Bold.ttf"
+```
+
 To generate only one weight, select its instance explicitly:
 
 ```powershell
@@ -595,6 +607,12 @@ TTC / OTC 是字型集合。先查看其中的字型：
 若要相容只依 Regular / Bold 名稱配對字型的舊軟體，可以分別指定視覺字重與輸出樣式中繼資料。例如 `--axis wght=500 --style Bold` 會依 500 的輪廓字重產生字型並保留 `usWeightClass=500`，同時把輸出樣式名稱與 legacy Bold 標誌寫成 Bold。GUI 的進階設定可使用「輸出樣式(中繼資料)」完成相同行為。這是相容性覆蓋，不會把實際輪廓變成 700 字重。
 
 若同時指定命名實例與軸座標（例如 `--instance Bold --axis wght=500`），明確的軸座標仍會覆蓋實例中的同名軸，但輸出樣式會保留明確指定的 Bold 實例名稱；若只想覆蓋命名而不要求每個來源可變字型都具有 Bold 實例，請優先使用 `--style Bold`。
+
+CFF2 可變字型目前僅提供實驗性靜態化。預設仍會拒絕這類輸入；確認接受上游 fontTools 仍可能失敗的風險後，可在 CLI 明確加入 `--experimental-cff2-staticize`，或在 Python API 傳入 `experimental_cff2_staticize=True`。程式會固定所有軸、將 CFF2 降級為靜態 CFF，再沿用既有的 CFF→glyf 合併流程；任何靜態化或降級失敗都會中止，不會靜默改用其他實例。輸出仍是含 TrueType `glyf` 輪廓的靜態字型，並非 CFF/PostScript 輪廓 OTF。
+
+```powershell
+./font-merger-windows-x64.exe "SourceSerif4Variable-Roman.otf" "CJK.ttf" --experimental-cff2-staticize --axis wght=700 --axis opsz=20 --style Bold -o "Merged-Bold.ttf"
+```
 
 只需要一個字重時，請明確指定實例：
 
