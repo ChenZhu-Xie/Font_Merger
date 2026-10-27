@@ -35,6 +35,8 @@ class ReleaseE2ETests(TestCase):
         with TemporaryDirectory() as temporary:
             latin_path, cjk_path = create_inputs(Path(temporary))
             with TTFont(latin_path) as font:
+                self.assertIn("CFF2", font)
+                self.assertIn("fvar", font)
                 self.assertTrue(
                     {
                         "f",
@@ -85,6 +87,9 @@ class ReleaseE2ETests(TestCase):
                 "QA Merged",
                 "--style",
                 "Regular",
+                "--axis",
+                "wght=900",
+                "--experimental-cff2-staticize",
                 "--table-policy",
                 "strict",
                 "--output",

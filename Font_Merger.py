@@ -884,12 +884,16 @@ def instantiate_if_variable(
     font: TTFont,
     requested_axes: dict[str, float],
     instance_coordinates: dict[str, float] | None = None,
+    experimental_cff2_staticize: bool = False,
+    source_label: str | None = None,
 ) -> set[str]:
     if "fvar" not in font:
         return set()
-    if "CFF2" in font:
+    is_cff2 = "CFF2" in font
+    if is_cff2 and not experimental_cff2_staticize:
         raise FontMergerError(
-            "当前 fontTools 不能可靠地静态化 CFF2 可变字体；请先导出静态实例"
+            "CFF2 可变字体静态化仍为实验功能；请先导出静态实例，或显式使用 "
+            "--experimental-cff2-staticize"
         )
 
     available = {axis.axisTag: axis for axis in font["fvar"].axes}
@@ -899,11 +903,40 @@ def instantiate_if_variable(
         tag: requested_axes.get(tag, instance_coordinates.get(tag, axis.defaultValue))
         for tag, axis in available.items()
     }
-    LOG.info(
-        "静态化可变字体：%s",
-        ", ".join(f"{tag}={limits[tag]:g}" for tag in sorted(limits)),
+    coordinates = ", ".join(
+        f"{tag}={limits[tag]:g}" for tag in sorted(limits)
     )
-    instantiateVariableFont(font, limits, inplace=True, optimize=True)
+    LOG.info("静态化可变字体：%s", coordinates)
+    if is_cff2:
+        LOG.warning("启用实验性 CFF2 静态化：%s", source_label or "CFF2 输入")
+        try:
+            instantiateVariableFont(
+                font,
+                limits,
+                inplace=True,
+                optimize=True,
+                downgradeCFF2=True,
+                static=True,
+            )
+        except Exception as exc:
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化失败"
+                f"（{coordinates}; fontTools {fontTools.__version__}）："
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+        if "CFF2" in font:
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化后仍含 CFF2"
+                f"（{coordinates}; fontTools {fontTools.__version__}）"
+            )
+        if "fvar" in font or "CFF " not in font:
+            remaining = "fvar" if "fvar" in font else "未生成 CFF"
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化不完整："
+                f"{remaining}（{coordinates}; fontTools {fontTools.__version__}）"
+            )
+    else:
+        instantiateVariableFont(font, limits, inplace=True, optimize=True)
     return used
 
 
@@ -1475,6 +1508,7 @@ def merge_fonts(
     inspected_sources: Sequence[SourceInfo] | None = None,
     output_weight: int | None = None,
     table_policy: str = "warn",
+    experimental_cff2_staticize: bool = False,
 ) -> tuple[int, int]:
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
@@ -1628,7 +1662,11 @@ def merge_fonts(
                     source_axes["wght"] = float(source_weights[index])
                 used_axes.update(
                     instantiate_if_variable(
-                        font, source_axes, instance_coordinates[index]
+                        font,
+                        source_axes,
+                        instance_coordinates[index],
+                        experimental_cff2_staticize=experimental_cff2_staticize,
+                        source_label=source.label,
                     )
                 )
                 selected = selected_unicodes[index]
@@ -1800,6 +1838,7 @@ def merge_font_family(
     weight_match: str = "nearest",
     max_weight_gap: int | None = None,
     table_policy: str = "warn",
+    experimental_cff2_staticize: bool = False,
 ) -> list[MergeResult]:
     """Merge one explicit style, or automatically build a static font family."""
     axes = dict(axes or {})
@@ -1820,6 +1859,7 @@ def merge_font_family(
             hinting_source=hinting_source,
             instance=instance,
             table_policy=table_policy,
+            experimental_cff2_staticize=experimental_cff2_staticize,
         )
         selected_style = style or instance or style_for_weight(axes.get("wght", 400))
         selected_weight = int(
@@ -1868,6 +1908,7 @@ def merge_font_family(
             inspected_sources=infos,
             output_weight=weight,
             table_policy=table_policy,
+            experimental_cff2_staticize=experimental_cff2_staticize,
         )
         results.append(
             MergeResult(target.resolve(), output_style, weight, characters, glyphs)
@@ -1958,6 +1999,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--experimental-cff2-staticize",
+        action="store_true",
+        help=(
+            "实验性地将 CFF2 可变字体完整静态化为 CFF 后再转换为 glyf；"
+            "默认关闭，失败时中止"
+        ),
+    )
+    parser.add_argument(
         "--list",
         dest="list_font",
         type=Path,
@@ -2029,6 +2078,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             weight_match=args.weight_match,
             max_weight_gap=args.max_weight_gap,
             table_policy=args.table_policy,
+            experimental_cff2_staticize=args.experimental_cff2_staticize,
         )
         for result in results:
             print(

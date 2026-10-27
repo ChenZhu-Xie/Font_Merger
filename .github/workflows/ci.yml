@@ -75,10 +75,17 @@ jobs:
           python scripts/font_qa.py
           --font build/source-e2e/e2e-merged.ttf
           --work-dir build/source-e2e/font-qa
+      - name: Validate pinned Adobe CFF2 variable font
+        run: >-
+          python scripts/cff2_corpus_e2e.py
+          --source-script Font_Merger.py
+          --work-dir build/cff2-corpus-e2e
       - name: Upload font QA failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: source-font-qa-failure
-          path: build/source-e2e
+          path: |
+            build/source-e2e
+            build/cff2-corpus-e2e
           if-no-files-found: ignore

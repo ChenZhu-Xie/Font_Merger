@@ -12,6 +12,7 @@ from pathlib import Path
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
+from fontTools.misc.psCharStrings import T2CharString
 from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
 from fontTools.pens.t2CharStringPen import T2CharStringPen
@@ -30,8 +31,8 @@ def rectangle_glyph(width: int, height: int):
     return pen.glyph()
 
 
-def rectangle_charstring(width: int, height: int):
-    pen = T2CharStringPen(width, None)
+def rectangle_charstring(width: int, height: int, *, cff2: bool = False):
+    pen = T2CharStringPen(None if cff2 else width, None, CFF2=cff2)
     pen.moveTo((50, 0))
     pen.lineTo((width - 50, 0))
     pen.lineTo((width - 50, height))
@@ -51,11 +52,21 @@ def build_font(
     vertical_metrics: dict[str, tuple[int, int]] | None = None,
     vorg_default: int | None = None,
     vorg_records: dict[str, int] | None = None,
+    cff2_variable: bool = False,
 ) -> TTFont:
     glyph_order = list(glyph_widths)
     builder = FontBuilder(upm, isTTF=is_ttf)
     builder.setupGlyphOrder(glyph_order)
     builder.setupCharacterMap(cmap)
+    builder.setupNameTable(
+        {
+            "familyName": family,
+            "styleName": "Regular",
+            "uniqueFontIdentifier": f"ReleaseE2E-{family}",
+            "fullName": f"{family} Regular",
+            "psName": family.replace(" ", "") + "-Regular",
+        }
+    )
     if is_ttf:
         builder.setupGlyf(
             {
@@ -63,6 +74,47 @@ def build_font(
                 for glyph_name, width in glyph_widths.items()
             }
         )
+    elif cff2_variable:
+        builder.setupFvar(
+            [("wght", 100, 400, 900, "Weight")],
+            [
+                {"location": {"wght": 400}, "stylename": "Regular"},
+                {"location": {"wght": 900}, "stylename": "Black"},
+            ],
+        )
+        charstrings = {
+            glyph_name: rectangle_charstring(
+                max(width, 200), otRound(upm * 0.7), cff2=True
+            )
+            for glyph_name, width in glyph_widths.items()
+        }
+        charstrings["A"] = T2CharString(
+            program=[
+                200,
+                100,
+                -100,
+                0,
+                2,
+                "blend",
+                "rmoveto",
+                400,
+                200,
+                1,
+                "blend",
+                "hlineto",
+                500,
+                0,
+                1,
+                "blend",
+                "vlineto",
+                -400,
+                -200,
+                1,
+                "blend",
+                "hlineto",
+            ]
+        )
+        builder.setupCFF2(charstrings, regions=[{"wght": (0, 1, 1)}])
     else:
         builder.setupCFF(
             family.replace(" ", "") + "-Regular",
@@ -92,15 +144,6 @@ def build_font(
         usWinAscent=otRound(upm * 0.8),
         usWinDescent=otRound(upm * 0.2),
     )
-    builder.setupNameTable(
-        {
-            "familyName": family,
-            "styleName": "Regular",
-            "uniqueFontIdentifier": f"ReleaseE2E-{family}",
-            "fullName": f"{family} Regular",
-            "psName": family.replace(" ", "") + "-Regular",
-        }
-    )
     builder.setupPost()
     builder.setupMaxp()
     if vorg_default is not None:
@@ -128,7 +171,7 @@ def add_uvs(font: TTFont, entries: list[tuple[int, int, str | None]]) -> None:
 
 
 def create_inputs(work_dir: Path) -> tuple[Path, Path]:
-    latin_path = work_dir / "e2e-latin.ttf"
+    latin_path = work_dir / "e2e-latin-cff2-vf.otf"
     cjk_path = work_dir / "e2e-cjk-math-uvs.otf"
 
     latin = build_font(
@@ -161,6 +204,8 @@ def create_inputs(work_dir: Path) -> tuple[Path, Path]:
             0x0937: "ssa",
             0x094D: "virama",
         },
+        is_ttf=False,
+        cff2_variable=True,
     )
     addOpenTypeFeaturesFromString(
         latin,
@@ -370,6 +415,17 @@ def validate_output(path: Path) -> None:
             raise AssertionError("output UPM was not normalized to the first font")
         if "fvar" in font:
             raise AssertionError("output unexpectedly remains variable")
+        if "CFF2" in font or "CFF " in font:
+            raise AssertionError("output retained PostScript outlines")
+        latin_a = font["glyf"][cmap[0x0041]]
+        latin_a.recalcBounds(font["glyf"])
+        if (latin_a.xMin, latin_a.yMin, latin_a.xMax, latin_a.yMax) != (
+            100,
+            100,
+            700,
+            600,
+        ):
+            raise AssertionError("CFF2 custom-axis outline was not selected")
         if "MATH" not in font:
             raise AssertionError("output lost the MATH table")
         math = font["MATH"].table
@@ -428,6 +484,9 @@ def _run_command(
             "Release E2E Merged",
             "--style",
             "Regular",
+            "--axis",
+            "wght=900",
+            "--experimental-cff2-staticize",
             "--table-policy",
             "strict",
             "--output",
