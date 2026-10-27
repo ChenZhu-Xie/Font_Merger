@@ -287,6 +287,14 @@ class FontMergerTests(TestCase):
         return pen.bounds
 
     @staticmethod
+    def _merged_glyph_bounds(path, codepoint):
+        with TTFont(path) as font:
+            glyph_name = font.getBestCmap()[codepoint]
+            glyph = font["glyf"][glyph_name]
+            glyph.recalcBounds(font["glyf"])
+            return glyph.xMin, glyph.yMin, glyph.xMax, glyph.yMax
+
+    @staticmethod
     def _single_substitution(font, feature_tag, glyph_name):
         feature_list = font["GSUB"].table.FeatureList.FeatureRecord
         lookup_list = font["GSUB"].table.LookupList.Lookup
@@ -514,6 +522,101 @@ class FontMergerTests(TestCase):
                         experimental_cff2_staticize=True,
                         source_label="generated-cff2.otf",
                     )
+
+    def test_cff2_full_merge_requires_opt_in_without_leaving_output(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            path = temp / "cff2-vf.otf"
+            output = temp / "rejected.ttf"
+            self._write_cff2_variable_font(path)
+
+            with self.assertRaisesRegex(FontMergerError, "实验"):
+                merge_fonts(
+                    [FontSource(path), FontSource(LATIN)],
+                    output,
+                    priority="input",
+                    hinting_source="none",
+                    style="Regular",
+                )
+            self.assertFalse(output.exists())
+
+    def test_cff2_full_merge_staticizes_default_and_custom_axis_locations(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            path = temp / "cff2-vf.otf"
+            self._write_cff2_variable_font(path)
+
+            observed = []
+            for name, axes, expected_bounds in (
+                ("default", {}, (200, 100, 600, 600)),
+                ("custom", {"wght": 900}, (100, 100, 700, 600)),
+            ):
+                with self.subTest(name=name):
+                    output = temp / f"{name}.ttf"
+                    merge_fonts(
+                        [FontSource(path), FontSource(LATIN)],
+                        output,
+                        axes=axes,
+                        priority="input",
+                        hinting_source="none",
+                        style="Regular",
+                        experimental_cff2_staticize=True,
+                    )
+                    with TTFont(output) as font:
+                        self.assertNotIn("CFF2", font)
+                        self.assertNotIn("CFF ", font)
+                        self.assertNotIn("fvar", font)
+                    bounds = self._merged_glyph_bounds(output, 0x2603)
+                    observed.append(bounds)
+                    self.assertEqual(bounds, expected_bounds)
+            self.assertNotEqual(observed[0], observed[1])
+
+    def test_cff2_flag_reaches_cli_and_automatic_family_merge_paths(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            path = temp / "cff2-vf.otf"
+            cli_output = temp / "cli.ttf"
+            family_output = temp / "family.ttf"
+            self._write_cff2_variable_font(path)
+
+            stdout = StringIO()
+            with redirect_stdout(stdout):
+                result = main(
+                    [
+                        str(path),
+                        str(LATIN),
+                        "--experimental-cff2-staticize",
+                        "--axis",
+                        "wght=900",
+                        "--style",
+                        "Regular",
+                        "--priority",
+                        "input",
+                        "--hinting-source",
+                        "none",
+                        "--output",
+                        str(cli_output),
+                    ]
+                )
+            self.assertEqual(result, 0)
+            self.assertEqual(
+                self._merged_glyph_bounds(cli_output, 0x2603),
+                (100, 100, 700, 600),
+            )
+
+            results = merge_font_family(
+                [FontSource(path), FontSource(LATIN)],
+                family_output,
+                priority="input",
+                hinting_source="none",
+                experimental_cff2_staticize=True,
+            )
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0].weight, 500)
+            self.assertEqual(
+                self._merged_glyph_bounds(family_output, 0x2603),
+                (180, 100, 620, 600),
+            )
 
     def test_list_labels_a_standalone_font_as_font_not_face_zero(self):
         output = StringIO()

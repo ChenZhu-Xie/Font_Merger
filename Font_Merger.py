@@ -1508,6 +1508,7 @@ def merge_fonts(
     inspected_sources: Sequence[SourceInfo] | None = None,
     output_weight: int | None = None,
     table_policy: str = "warn",
+    experimental_cff2_staticize: bool = False,
 ) -> tuple[int, int]:
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
@@ -1661,7 +1662,11 @@ def merge_fonts(
                     source_axes["wght"] = float(source_weights[index])
                 used_axes.update(
                     instantiate_if_variable(
-                        font, source_axes, instance_coordinates[index]
+                        font,
+                        source_axes,
+                        instance_coordinates[index],
+                        experimental_cff2_staticize=experimental_cff2_staticize,
+                        source_label=source.label,
                     )
                 )
                 selected = selected_unicodes[index]
@@ -1833,6 +1838,7 @@ def merge_font_family(
     weight_match: str = "nearest",
     max_weight_gap: int | None = None,
     table_policy: str = "warn",
+    experimental_cff2_staticize: bool = False,
 ) -> list[MergeResult]:
     """Merge one explicit style, or automatically build a static font family."""
     axes = dict(axes or {})
@@ -1853,6 +1859,7 @@ def merge_font_family(
             hinting_source=hinting_source,
             instance=instance,
             table_policy=table_policy,
+            experimental_cff2_staticize=experimental_cff2_staticize,
         )
         selected_style = style or instance or style_for_weight(axes.get("wght", 400))
         selected_weight = int(
@@ -1901,6 +1908,7 @@ def merge_font_family(
             inspected_sources=infos,
             output_weight=weight,
             table_policy=table_policy,
+            experimental_cff2_staticize=experimental_cff2_staticize,
         )
         results.append(
             MergeResult(target.resolve(), output_style, weight, characters, glyphs)
@@ -1991,6 +1999,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--experimental-cff2-staticize",
+        action="store_true",
+        help=(
+            "实验性地将 CFF2 可变字体完整静态化为 CFF 后再转换为 glyf；"
+            "默认关闭，失败时中止"
+        ),
+    )
+    parser.add_argument(
         "--list",
         dest="list_font",
         type=Path,
@@ -2062,6 +2078,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             weight_match=args.weight_match,
             max_weight_gap=args.max_weight_gap,
             table_policy=args.table_policy,
+            experimental_cff2_staticize=args.experimental_cff2_staticize,
         )
         for result in results:
             print(
