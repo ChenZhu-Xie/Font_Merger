@@ -5,7 +5,10 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from fontTools.fontBuilder import FontBuilder
+from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
 from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
@@ -40,6 +43,100 @@ CJK = ROOT / "LXGWBright-Medium.ttf"
 
 
 class FontMergerTests(TestCase):
+    @staticmethod
+    def _rectangle_glyph(width, height):
+        pen = TTGlyphPen(None)
+        pen.moveTo((50, 0))
+        pen.lineTo((width - 50, 0))
+        pen.lineTo((width - 50, height))
+        pen.lineTo((50, height))
+        pen.closePath()
+        return pen.glyph()
+
+    @classmethod
+    def _write_math_font(
+        cls,
+        path,
+        *,
+        family,
+        upm,
+        codepoint,
+        glyph_name,
+        axis_height,
+        top_accent,
+        min_connector_overlap,
+    ):
+        variant_name = f"{glyph_name}.size"
+        glyph_order = [".notdef", glyph_name, variant_name]
+        widths = {
+            ".notdef": otRound(upm / 2),
+            glyph_name: otRound(upm * 0.6),
+            variant_name: otRound(upm * 0.8),
+        }
+        builder = FontBuilder(upm, isTTF=True)
+        builder.setupGlyphOrder(glyph_order)
+        builder.setupCharacterMap({codepoint: glyph_name})
+        builder.setupGlyf(
+            {
+                name: cls._rectangle_glyph(max(width, 200), otRound(upm * 0.7))
+                for name, width in widths.items()
+            }
+        )
+        builder.setupHorizontalMetrics({name: (width, 0) for name, width in widths.items()})
+        builder.setupHorizontalHeader(
+            ascent=otRound(upm * 0.8), descent=-otRound(upm * 0.2)
+        )
+        builder.setupOS2(
+            sTypoAscender=otRound(upm * 0.8),
+            sTypoDescender=-otRound(upm * 0.2),
+            usWinAscent=otRound(upm * 0.8),
+            usWinDescent=otRound(upm * 0.2),
+        )
+        builder.setupNameTable(
+            {
+                "familyName": family,
+                "styleName": "Regular",
+                "uniqueFontIdentifier": f"MathRegression-{family}",
+                "fullName": f"{family} Regular",
+                "psName": family.replace(" ", "") + "-Regular",
+            }
+        )
+        builder.setupPost()
+        builder.setupMaxp()
+        buildMathTable(
+            builder.font,
+            constants={
+                "AxisHeight": axis_height,
+                "DelimitedSubFormulaMinHeight": axis_height * 4,
+                "DisplayOperatorMinHeight": axis_height * 8,
+            },
+            topAccentAttachments={glyph_name: top_accent},
+            extendedShapes={glyph_name},
+            minConnectorOverlap=min_connector_overlap,
+            vertGlyphVariants={
+                glyph_name: [
+                    (glyph_name, upm),
+                    (variant_name, otRound(upm * 1.5)),
+                ]
+            },
+            vertGlyphAssembly={
+                glyph_name: (
+                    (
+                        (
+                            variant_name,
+                            1,
+                            otRound(upm * 0.1),
+                            otRound(upm * 0.2),
+                            otRound(upm * 0.5),
+                        ),
+                    ),
+                    otRound(upm * 0.05),
+                )
+            },
+        )
+        builder.font.save(path)
+        builder.font.close()
+
     def test_table_policy_always_rejects_unsafe_layout_technologies(self):
         font = TTFont()
         font["morx"] = newTable("morx")
@@ -450,6 +547,106 @@ class FontMergerTests(TestCase):
                 self.assertIn(
                     merged_math_glyph,
                     math.MathVariants.VertGlyphCoverage.glyphs,
+                )
+
+    def test_math_multiple_sources_use_priority_globals_and_scale_each_source(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            primary_path = temp / "primary-math.ttf"
+            secondary_path = temp / "secondary-math.ttf"
+            output = temp / "merged-math.ttf"
+
+            self._write_math_font(
+                primary_path,
+                family="Primary Math",
+                upm=1000,
+                codepoint=0x0041,
+                glyph_name="primary",
+                axis_height=250,
+                top_accent=300,
+                min_connector_overlap=50,
+            )
+            self._write_math_font(
+                secondary_path,
+                family="Secondary Math",
+                upm=2048,
+                codepoint=0x4E00,
+                glyph_name="secondary",
+                axis_height=768,
+                top_accent=1024,
+                min_connector_overlap=200,
+            )
+
+            merge_fonts(
+                [FontSource(primary_path), FontSource(secondary_path)],
+                output,
+                family="Multi-source Math",
+                priority="input",
+                hinting_source="2",
+            )
+
+            with TTFont(output) as merged:
+                self.assertEqual(merged["head"].unitsPerEm, 2048)
+                math = merged["MATH"].table
+                self.assertEqual(math.MathConstants.AxisHeight.Value, 512)
+                self.assertEqual(
+                    math.MathConstants.DelimitedSubFormulaMinHeight, 2048
+                )
+                self.assertEqual(math.MathConstants.DisplayOperatorMinHeight, 4096)
+                self.assertEqual(math.MathVariants.MinConnectorOverlap, 102)
+
+                cmap = merged.getBestCmap()
+                primary_glyph = cmap[0x0041]
+                secondary_glyph = cmap[0x4E00]
+                accents = dict(
+                    zip(
+                        math.MathGlyphInfo.MathTopAccentAttachment.TopAccentCoverage.glyphs,
+                        math.MathGlyphInfo.MathTopAccentAttachment.TopAccentAttachment,
+                    )
+                )
+                self.assertEqual(accents[primary_glyph].Value, 614)
+                self.assertEqual(accents[secondary_glyph].Value, 1024)
+                self.assertEqual(
+                    set(math.MathGlyphInfo.ExtendedShapeCoverage.glyphs),
+                    {primary_glyph, secondary_glyph},
+                )
+
+                constructions = dict(
+                    zip(
+                        math.MathVariants.VertGlyphCoverage.glyphs,
+                        math.MathVariants.VertGlyphConstruction,
+                    )
+                )
+                self.assertEqual(
+                    [
+                        record.AdvanceMeasurement
+                        for record in constructions[
+                            primary_glyph
+                        ].MathGlyphVariantRecord
+                    ],
+                    [2048, 3072],
+                )
+                primary_assembly = constructions[primary_glyph].GlyphAssembly
+                self.assertEqual(primary_assembly.ItalicsCorrection.Value, 102)
+                self.assertEqual(
+                    [
+                        (
+                            record.StartConnectorLength,
+                            record.EndConnectorLength,
+                            record.FullAdvance,
+                        )
+                        for record in primary_assembly.PartRecords
+                    ],
+                    [(205, 410, 1024)],
+                )
+                self.assertEqual(
+                    [
+                        record.AdvanceMeasurement
+                        for record in constructions[
+                            secondary_glyph
+                        ].MathGlyphVariantRecord
+                    ],
+                    [2048, 3072],
                 )
 
     def test_uvs_only_source_contributes_default_and_non_default_sequences(self):

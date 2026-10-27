@@ -18,8 +18,14 @@ GitHub issue #2 暴露的问题来自旧版 fontTools：顶层 `MATH` 表虽然�
 `MathConstants`、`MathGlyphInfo`、`MathVariants` 等子表却没有 merge policy。fontTools 4.67.0
 加入了上游支持；Font_Merger v2.3.8 还为 Python 3.10 使用的旧版 fontTools 回移了相同策略。
 
-现有回归测试覆盖 MathConstants、TopAccentAttachment、ExtendedShapeCoverage 和纵向 variants。
-后续仍应补充不同 UPM 和两个 MATH 来源发生字体级常量冲突的测试。
+现有回归测试覆盖 MathConstants、TopAccentAttachment、ExtendedShapeCoverage、纵向 variants，
+以及两个不同 UPM 的 MATH 来源发生字体级常量冲突的场景。glyph 级数据会从所有实际贡献字符的
+来源合并；`MathConstants` 和 `MinConnectorOverlap` 明确采用字符优先级最高的 MATH 来源，
+不受为了保留 hinting 而调整的内部合并顺序影响。
+
+UPM 归一化除 fontTools 已处理的 `MathValueRecord` 外，也显式缩放 MATH 中以裸整数保存的设计单位：
+delimiter/display 高度、connector overlap、variant advance，以及 glyph assembly 的 connector/full
+advance。百分比和 flags 不参与缩放。
 
 ## P0：UVS / cmap format 14 全流程支持
 
@@ -82,7 +88,7 @@ fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描
 
 - FontBakery/Fontspector 更适合作为可选深度检查；合并字体可能有大量与 foundry policy 有关、
   但不代表数据损坏的报告。
-- 仍需补充两个 MATH 来源发生字体级常量冲突，以及 CJK 纵排/VORG 的语义回归。
+- MATH 多来源、不同 UPM 和字体级常量冲突已有合成字体语义回归；仍需补充 CJK 纵排/VORG。
 
 ### 重点回归语料
 
@@ -121,5 +127,5 @@ bug，但应该成为 corpus regression，尤其覆盖 exceptional records 和 U
 2. 发布版可执行文件的真实合并测试与依赖诊断。
 3. 表处理摘要、warning 策略、完整 decompile 验证。
 4. 已完成：OTS + HarfBuzz corpus CI。
-5. 补 MATH 多来源/不同 UPM 与纵排/VORG 边界测试。
+5. 已完成：MATH 多来源/不同 UPM；下一步补纵排/VORG 边界测试。
 6. experimental CFF2 静态化。
