@@ -9,6 +9,7 @@ points by default, independent of input order.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import logging
 import os
 import platform
@@ -25,6 +26,7 @@ from fontTools.merge import Merger
 from fontTools.merge.base import mergeObjects
 from fontTools.merge.options import Options as MergeOptions
 from fontTools.merge.util import first, sumLists
+from fontTools.misc.roundTools import otRound
 from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.subset import Options as SubsetOptions
@@ -1090,6 +1092,47 @@ def remove_hinting(font: TTFont) -> None:
         font["maxp"].maxZones = 1
 
 
+def math_design_unit_fields(font: TTFont) -> list[tuple[object, str, int]]:
+    """Return MATH fields that fontTools.scale_upem does not currently scale."""
+    if "MATH" not in font:
+        return []
+
+    math = font["MATH"].table
+    fields: list[tuple[object, str, int]] = []
+    constants = math.MathConstants
+    if constants is not None:
+        for attribute in (
+            "DelimitedSubFormulaMinHeight",
+            "DisplayOperatorMinHeight",
+        ):
+            fields.append((constants, attribute, getattr(constants, attribute)))
+
+    variants = math.MathVariants
+    if variants is None:
+        return fields
+    fields.append(
+        (variants, "MinConnectorOverlap", variants.MinConnectorOverlap)
+    )
+    constructions = list(variants.VertGlyphConstruction or ())
+    constructions.extend(variants.HorizGlyphConstruction or ())
+    for construction in constructions:
+        for record in construction.MathGlyphVariantRecord or ():
+            fields.append(
+                (record, "AdvanceMeasurement", record.AdvanceMeasurement)
+            )
+        assembly = construction.GlyphAssembly
+        if assembly is None:
+            continue
+        for record in assembly.PartRecords or ():
+            for attribute in (
+                "StartConnectorLength",
+                "EndConnectorLength",
+                "FullAdvance",
+            ):
+                fields.append((record, attribute, getattr(record, attribute)))
+    return fields
+
+
 def normalize_upm(font: TTFont, target_upm: int) -> None:
     current = font["head"].unitsPerEm
     if current == target_upm:
@@ -1097,7 +1140,14 @@ def normalize_upm(font: TTFont, target_upm: int) -> None:
     LOG.info(
         "缩放 UPM：%d -> %d（并移除已失效的 TrueType hinting）", current, target_upm
     )
+    unscaled_math_fields = math_design_unit_fields(font)
     scale_upem(font, target_upm)
+    for table, attribute, original_value in unscaled_math_fields:
+        setattr(
+            table,
+            attribute,
+            otRound(original_value * target_upm / current),
+        )
     remove_hinting(font)
 
 
@@ -1483,6 +1533,13 @@ def merge_fonts(
     )
     used_axes: set[str] = set()
     style_metadata: StyleMetadata | None = None
+    priority_ranks = {index: rank for rank, index in enumerate(priority_order)}
+    math_constants = None
+    math_constants_rank = len(infos)
+    math_constants_source: int | None = None
+    math_min_connector_overlap: int | None = None
+    math_variants_rank = len(infos)
+    math_variants_source: int | None = None
 
     output = output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -1545,6 +1602,23 @@ def merge_fonts(
                 elif not HINT_TABLES.intersection(font.keys()):
                     LOG.warning("指定的 hinting 来源不包含可保留的 TrueType hinting")
 
+                if "MATH" in font:
+                    math = font["MATH"].table
+                    rank = priority_ranks[index]
+                    if math.MathConstants is not None and rank < math_constants_rank:
+                        math_constants = deepcopy(math.MathConstants)
+                        math_constants_rank = rank
+                        math_constants_source = index
+                    if (
+                        math.MathVariants is not None
+                        and rank < math_variants_rank
+                    ):
+                        math_min_connector_overlap = (
+                            math.MathVariants.MinConnectorOverlap
+                        )
+                        math_variants_rank = rank
+                        math_variants_source = index
+
                 if index == priority_order[0]:
                     style_metadata = read_style_metadata(font)
                 ensure_vertical_metrics(font)
@@ -1569,6 +1643,30 @@ def merge_fonts(
         merged = Merger(options=options).merge([str(path) for path in prepared_paths])
         merged.recalcTimestamp = False
         merged.recalcBBoxes = True
+        if "MATH" in merged:
+            math = merged["MATH"].table
+            if math_constants is not None:
+                math.MathConstants = math_constants
+            if (
+                math_min_connector_overlap is not None
+                and math.MathVariants is not None
+            ):
+                math.MathVariants.MinConnectorOverlap = math_min_connector_overlap
+            if math_constants_source is not None:
+                LOG.info(
+                    "MATH 字体级常量来源：#%d %s（按字符优先级）",
+                    math_constants_source + 1,
+                    infos[math_constants_source].family,
+                )
+            if (
+                math_variants_source is not None
+                and math_variants_source != math_constants_source
+            ):
+                LOG.info(
+                    "MATH MinConnectorOverlap 来源：#%d %s（按字符优先级）",
+                    math_variants_source + 1,
+                    infos[math_variants_source].family,
+                )
         merged_variation_mappings = map_variation_sequences_to_merged_glyphs(
             merged, prepared_glyph_orders, prepared_variation_mappings
         )
