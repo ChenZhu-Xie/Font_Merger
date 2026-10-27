@@ -66,5 +66,16 @@
       "gids": [13],
       "clusters": [0]
     }
+  },
+  {
+    "name": "cjk-vertical-alternate",
+    "text": "一",
+    "direction": "ttb",
+    "script": "hani",
+    "features": "vert=1,vrt2=1",
+    "expect": {
+      "gids": [17],
+      "clusters": [0]
+    }
   }
 ]

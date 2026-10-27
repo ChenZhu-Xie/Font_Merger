@@ -88,7 +88,6 @@ INTENTIONALLY_DROPPED_TABLES = {
     "PCLT",
     "STAT",
     "VDMX",
-    "VORG",
     "avar",
     "cvar",
     "fvar",
@@ -98,6 +97,11 @@ INTENTIONALLY_DROPPED_TABLES = {
     "HVAR",
     "MVAR",
     "VVAR",
+}
+CONSUMED_TABLES = {
+    # CFF vertical origins are rewritten into glyf/vmtx during outline
+    # conversion, so VORG must survive subsetting but not reach the output.
+    "VORG",
 }
 RISKY_DROPPED_TABLES = {
     # fontTools.merge has no policy for the legacy kern table.  OpenType GPOS
@@ -126,6 +130,7 @@ KNOWN_TABLES = (
     | INTENTIONALLY_DROPPED_TABLES
     | RISKY_DROPPED_TABLES
     | REBUILT_TABLES
+    | CONSUMED_TABLES
     | VERIFIED_MERGED_TABLES
     | UNVERIFIED_MERGED_TABLES
     | {"CFF ", "CFF2"}
@@ -202,6 +207,8 @@ def assess_table_policy(
         )
 
     ordinary_drops = tags & INTENTIONALLY_DROPPED_TABLES
+    if "VORG" in tags and not {"CFF ", "CFF2"}.intersection(tags):
+        ordinary_drops.add("VORG")
     if ordinary_drops:
         LOG.info(
             "%s 将丢弃已失效或不适用于静态合并输出的表：%s",
@@ -225,7 +232,9 @@ def summarize_table_policy(
     input_tables = set().union(*source_tables) if source_tables else set()
     all_tables = input_tables | output_tables
     for tag in sorted(all_tables):
-        if tag in REBUILT_TABLES and tag in output_tables:
+        if tag in CONSUMED_TABLES and tag in input_tables:
+            status = "rebuilt"
+        elif tag in REBUILT_TABLES and tag in output_tables:
             status = "rebuilt"
         elif tag in UNVERIFIED_MERGED_TABLES and tag in output_tables:
             status = "unverified"
@@ -1029,11 +1038,46 @@ def map_variation_sequences_to_merged_glyphs(
     return result
 
 
+def glyf_y_max(font: TTFont, glyph_name: str) -> int:
+    glyf = font["glyf"]
+    glyph = glyf[glyph_name]
+    glyph.recalcBounds(glyf)
+    return glyph.yMax if hasattr(glyph, "yMax") else 0
+
+
+def vertical_origins_from_vmtx(font: TTFont) -> dict[str, int]:
+    """Read glyf vertical origins as yMax + top side bearing."""
+    if "glyf" not in font or "vmtx" not in font:
+        return {}
+    return {
+        glyph_name: glyf_y_max(font, glyph_name) + font["vmtx"][glyph_name][1]
+        for glyph_name in font.getGlyphOrder()
+    }
+
+
+def apply_vertical_origins(font: TTFont, origins: Mapping[str, int]) -> None:
+    """Encode explicit vertical origins in glyf/vmtx form."""
+    if not origins:
+        return
+    metrics = font["vmtx"].metrics
+    for glyph_name, origin in origins.items():
+        advance_height, _top_side_bearing = metrics[glyph_name]
+        metrics[glyph_name] = (
+            advance_height,
+            origin - glyf_y_max(font, glyph_name),
+        )
+
+
 def convert_cff_to_glyf(font: TTFont, max_err: float) -> None:
     if "CFF " not in font and "CFF2" not in font:
         return
 
     glyph_order = font.getGlyphOrder()
+    vorg_origins = (
+        {glyph_name: font["VORG"][glyph_name] for glyph_name in glyph_order}
+        if "VORG" in font
+        else {}
+    )
     glyph_set = font.getGlyphSet()
     glyphs = {}
     for glyph_name in glyph_order:
@@ -1047,6 +1091,14 @@ def convert_cff_to_glyf(font: TTFont, max_err: float) -> None:
     glyf.glyphs = glyphs
     font["glyf"] = glyf
     font["loca"] = newTable("loca")
+
+    if vorg_origins:
+        ensure_vertical_metrics(font)
+        apply_vertical_origins(font, vorg_origins)
+        LOG.info(
+            "将 VORG 的 %d 个 vertical origin 转写到 glyf/vmtx",
+            len(vorg_origins),
+        )
 
     maxp = font["maxp"]
     maxp.tableVersion = 0x00010000
@@ -1141,6 +1193,7 @@ def normalize_upm(font: TTFont, target_upm: int) -> None:
         "缩放 UPM：%d -> %d（并移除已失效的 TrueType hinting）", current, target_upm
     )
     unscaled_math_fields = math_design_unit_fields(font)
+    vertical_origins = vertical_origins_from_vmtx(font)
     scale_upem(font, target_upm)
     for table, attribute, original_value in unscaled_math_fields:
         setattr(
@@ -1148,6 +1201,13 @@ def normalize_upm(font: TTFont, target_upm: int) -> None:
             attribute,
             otRound(original_value * target_upm / current),
         )
+    apply_vertical_origins(
+        font,
+        {
+            glyph_name: otRound(origin * target_upm / current)
+            for glyph_name, origin in vertical_origins.items()
+        },
+    )
     remove_hinting(font)
 
 

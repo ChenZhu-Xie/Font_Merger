@@ -14,8 +14,9 @@ from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTFont, newTable
 from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
 
@@ -29,6 +30,16 @@ def rectangle_glyph(width: int, height: int):
     return pen.glyph()
 
 
+def rectangle_charstring(width: int, height: int):
+    pen = T2CharStringPen(width, None)
+    pen.moveTo((50, 0))
+    pen.lineTo((width - 50, 0))
+    pen.lineTo((width - 50, height))
+    pen.lineTo((50, height))
+    pen.closePath()
+    return pen.getCharString()
+
+
 def build_font(
     path: Path,
     *,
@@ -36,23 +47,45 @@ def build_font(
     upm: int,
     glyph_widths: dict[str, int],
     cmap: dict[int, str],
+    is_ttf: bool = True,
+    vertical_metrics: dict[str, tuple[int, int]] | None = None,
+    vorg_default: int | None = None,
+    vorg_records: dict[str, int] | None = None,
 ) -> TTFont:
     glyph_order = list(glyph_widths)
-    builder = FontBuilder(upm, isTTF=True)
+    builder = FontBuilder(upm, isTTF=is_ttf)
     builder.setupGlyphOrder(glyph_order)
     builder.setupCharacterMap(cmap)
-    builder.setupGlyf(
-        {
-            glyph_name: rectangle_glyph(max(width, 200), otRound(upm * 0.7))
-            for glyph_name, width in glyph_widths.items()
-        }
-    )
+    if is_ttf:
+        builder.setupGlyf(
+            {
+                glyph_name: rectangle_glyph(max(width, 200), otRound(upm * 0.7))
+                for glyph_name, width in glyph_widths.items()
+            }
+        )
+    else:
+        builder.setupCFF(
+            family.replace(" ", "") + "-Regular",
+            {"FullName": f"{family} Regular"},
+            {
+                glyph_name: rectangle_charstring(
+                    max(width, 200), otRound(upm * 0.7)
+                )
+                for glyph_name, width in glyph_widths.items()
+            },
+            {},
+        )
     builder.setupHorizontalMetrics(
         {glyph_name: (width, 0) for glyph_name, width in glyph_widths.items()}
     )
     builder.setupHorizontalHeader(
         ascent=otRound(upm * 0.8), descent=-otRound(upm * 0.2)
     )
+    if vertical_metrics is not None:
+        builder.setupVerticalMetrics(vertical_metrics)
+        builder.setupVerticalHeader(
+            ascent=otRound(upm / 2), descent=-otRound(upm / 2)
+        )
     builder.setupOS2(
         sTypoAscender=otRound(upm * 0.8),
         sTypoDescender=-otRound(upm * 0.2),
@@ -70,6 +103,13 @@ def build_font(
     )
     builder.setupPost()
     builder.setupMaxp()
+    if vorg_default is not None:
+        vorg = newTable("VORG")
+        vorg.majorVersion = 1
+        vorg.minorVersion = 0
+        vorg.defaultVertOriginY = vorg_default
+        vorg.VOriginRecords = dict(vorg_records or {})
+        builder.font["VORG"] = vorg
     builder.font.save(path)
     return builder.font
 
@@ -89,7 +129,7 @@ def add_uvs(font: TTFont, entries: list[tuple[int, int, str | None]]) -> None:
 
 def create_inputs(work_dir: Path) -> tuple[Path, Path]:
     latin_path = work_dir / "e2e-latin.ttf"
-    cjk_path = work_dir / "e2e-cjk-math-uvs.ttf"
+    cjk_path = work_dir / "e2e-cjk-math-uvs.otf"
 
     latin = build_font(
         latin_path,
@@ -170,8 +210,22 @@ def create_inputs(work_dir: Path) -> tuple[Path, Path]:
         cjk_path,
         family="Release E2E CJK",
         upm=2048,
-        glyph_widths={".notdef": 1024, "han": 2048, "han.alt": 1500},
+        glyph_widths={
+            ".notdef": 1024,
+            "han": 2048,
+            "han.alt": 1500,
+            "han.vert": 2048,
+        },
         cmap={0x0041: "han", 0x4E00: "han"},
+        is_ttf=False,
+        vertical_metrics={
+            ".notdef": (2048, 360),
+            "han": (2048, 360),
+            "han.alt": (2048, 360),
+            "han.vert": (2048, 400),
+        },
+        vorg_default=1800,
+        vorg_records={"han.vert": 1850},
     )
     add_uvs(
         cjk,
@@ -179,6 +233,15 @@ def create_inputs(work_dir: Path) -> tuple[Path, Path]:
             (0x0041, 0xFE00, "han.alt"),
             (0x0041, 0xFE01, None),
         ],
+    )
+    addOpenTypeFeaturesFromString(
+        cjk,
+        """
+        languagesystem DFLT dflt;
+        languagesystem hani dflt;
+        feature vert { sub han by han.vert; } vert;
+        feature vrt2 { sub han by han.vert; } vrt2;
+        """,
     )
     buildMathTable(
         cjk,
@@ -273,6 +336,19 @@ def read_uvs(font: TTFont) -> dict[tuple[int, int], str | None]:
     return mappings
 
 
+def single_substitution(font: TTFont, feature_tag: str, glyph_name: str) -> str:
+    feature_list = font["GSUB"].table.FeatureList.FeatureRecord
+    lookup_list = font["GSUB"].table.LookupList.Lookup
+    for feature_record in feature_list:
+        if feature_record.FeatureTag != feature_tag:
+            continue
+        for lookup_index in feature_record.Feature.LookupListIndex:
+            for subtable in lookup_list[lookup_index].SubTable:
+                if glyph_name in subtable.mapping:
+                    return subtable.mapping[glyph_name]
+    raise AssertionError(f"missing {feature_tag} substitution for {glyph_name}")
+
+
 def validate_output(path: Path) -> None:
     with TTFont(path, lazy=False) as font:
         cmap = font.getBestCmap() or {}
@@ -302,6 +378,27 @@ def validate_output(path: Path) -> None:
         han = cmap[0x4E00]
         if han not in math.MathGlyphInfo.ExtendedShapeCoverage.glyphs:
             raise AssertionError("MATH glyph coverage was not preserved")
+        if "CFF " in font or "VORG" in font:
+            raise AssertionError("CFF/VORG input was not fully converted to glyf/vmtx")
+        vertical = single_substitution(font, "vert", han)
+        if single_substitution(font, "vrt2", han) != vertical:
+            raise AssertionError("vert and vrt2 substitutions disagree")
+        glyf = font["glyf"]
+        expected_origins = {
+            han: otRound(1800 * 1000 / 2048),
+            vertical: otRound(1850 * 1000 / 2048),
+        }
+        for glyph_name, expected_origin in expected_origins.items():
+            glyph = glyf[glyph_name]
+            glyph.recalcBounds(glyf)
+            actual_origin = glyph.yMax + font["vmtx"][glyph_name][1]
+            if actual_origin != expected_origin:
+                raise AssertionError(
+                    f"vertical origin changed for {glyph_name}: "
+                    f"expected {expected_origin}, got {actual_origin}"
+                )
+            if font["vmtx"][glyph_name][0] != 1000:
+                raise AssertionError("vertical advance was not scaled with the UPM")
 
 
 def _run_command(

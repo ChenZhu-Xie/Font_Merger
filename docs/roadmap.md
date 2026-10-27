@@ -88,7 +88,9 @@ fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描
 
 - FontBakery/Fontspector 更适合作为可选深度检查；合并字体可能有大量与 foundry policy 有关、
   但不代表数据损坏的报告。
-- MATH 多来源、不同 UPM 和字体级常量冲突已有合成字体语义回归；仍需补充 CJK 纵排/VORG。
+- MATH 多来源、不同 UPM 和字体级常量冲突已有合成字体语义回归。
+- CFF VORG→glyf/vmtx 已有合成字体语义回归，覆盖默认 origin、逐 glyph override、`vert/vrt2`
+  substitution 和不同 UPM；后续可增加真实 CJK 字体 corpus，但不再是未验证路径。
 
 ### 重点回归语料
 
@@ -106,11 +108,15 @@ CFF2 instancing 的未解决失败案例，因此不应直接移除限制并宣�
 建议先放在显式 experimental flag 后，使用 Adobe/Google CFF2 VF corpus 覆盖默认/自定义轴实例，
 并分别测试 Python 3.10 兼容依赖路径和 Python 3.11+ 当前依赖路径。失败必须中止并给出清晰诊断。
 
-## P2：纵排与 VORG 回归
+## 已完成：纵排与 VORG 回归
 
-CFF→glyf 后删除 VORG 在格式层面合理。对带 230 个显式 VORG 记录的 Noto Sans CJK 样本检查时，
-原始 vertical origin 可以由 glyph bounds 与 vmtx 重建，抽样转换后未发现偏移。因此这不是已确认
-bug，但应该成为 corpus regression，尤其覆盖 exceptional records 和 UPM 缩放。
+CFF→glyf 后删除 VORG 在格式层面合理，但必须先将其语义转写到 TrueType vertical metrics。
+根据 OpenType 规范，glyf 字体的 vertical origin 等于 `glyph.yMax + vmtx.topSideBearing`。转换现在以
+VORG 的 `defaultVertOriginY` 和逐 glyph override 为准，重新计算每个 glyph 的 top side bearing；
+UPM 归一化也按完整 origin 缩放后再编码，避免 bbox 与 side bearing 分别取整造成 ±1 偏差。
+
+合成 CFF 回归故意让 bbox fallback 与 VORG 不同，并覆盖 `vert/vrt2`、原生 `vhea/vmtx`、1000→2048
+UPM 和转换后 VORG 移除。该测试在修复前可稳定观察到 vertical origin 数据丢失。
 
 ## 暂缓项目
 
@@ -127,5 +133,6 @@ bug，但应该成为 corpus regression，尤其覆盖 exceptional records 和 U
 2. 发布版可执行文件的真实合并测试与依赖诊断。
 3. 表处理摘要、warning 策略、完整 decompile 验证。
 4. 已完成：OTS + HarfBuzz corpus CI。
-5. 已完成：MATH 多来源/不同 UPM；下一步补纵排/VORG 边界测试。
-6. experimental CFF2 静态化。
+5. 已完成：MATH 多来源/不同 UPM。
+6. 已完成：纵排/VORG→glyf/vmtx 语义回归与修复。
+7. experimental CFF2 静态化。

@@ -33,7 +33,7 @@ class ReleaseE2ETests(TestCase):
 
     def test_synthetic_inputs_compile_expected_layout_features(self):
         with TemporaryDirectory() as temporary:
-            latin_path, _ = create_inputs(Path(temporary))
+            latin_path, cjk_path = create_inputs(Path(temporary))
             with TTFont(latin_path) as font:
                 self.assertTrue(
                     {
@@ -56,6 +56,12 @@ class ReleaseE2ETests(TestCase):
                     {"fina", "init", "liga", "medi", "rlig"},
                 )
                 self.assertEqual(feature_tags(font, "GPOS"), {"mark"})
+            with TTFont(cjk_path) as font:
+                self.assertIn("CFF ", font)
+                self.assertIn("VORG", font)
+                self.assertEqual(feature_tags(font, "GSUB"), {"vert", "vrt2"})
+                self.assertEqual(font["VORG"]["han"], 1800)
+                self.assertEqual(font["VORG"]["han.vert"], 1850)
 
     @skipUnless(
         shutil.which("hb-shape") and shutil.which("ots-sanitize"),
