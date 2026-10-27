@@ -3,7 +3,7 @@
 本文档记录已经结合当前源码、回归测试和代表性字体样本复核过的改进方向。原始外部调研材料归档于
 [`research/2026-10-23-font-merger-landscape.txt`](research/2026-10-23-font-merger-landscape.txt)。
 
-更新时间：2026-10-27；代码基线：v2.3.8。
+更新时间：2026-10-27；代码基线：v2.4.0。
 
 ## 当前定位
 
@@ -27,39 +27,31 @@ UPM 归一化除 fontTools 已处理的 `MathValueRecord` 外，也显式缩放 
 delimiter/display 高度、connector overlap、variant advance，以及 glyph assembly 的 connector/full
 advance。百分比和 flags 不参与缩放。
 
-## P0：UVS / cmap format 14 全流程支持
+## 已完成：UVS / cmap format 14 全流程支持
 
-### 已确认的问题
+issue #2 复核时确认：旧实现只建模标量 Unicode code point，导致高优先级字体取得基础字符、
+低优先级字体提供 non-default UVS 时，后者会在子集化阶段丢失。现在字符扫描、来源分配、子集化、
+合并和输出验证均显式建模 `(base codepoint, variation selector)`。
 
-fontTools 已支持合并 cmap format 14，但 Font_Merger 当前的字符扫描、来源分配、子集化和输出
-验证只建模标量 Unicode code point。实测中，当高优先级字体取得基础字符，而低优先级字体提供该
-字符的 non-default UVS 时，后者会在子集化阶段丢失，输出中连 format 14 子表也不再存在。
+- format 14 的 default UVS range 和 non-default UVS mapping 均会扫描并保留。
+- 基础字符和 UVS 可以来自不同输入；同一 variation sequence 的冲突遵循字符优先级。
+- 子集化会保留选中 UVS 引用的 glyph，不会把无关 UVS 带入输出。
+- 保存后重新打开输出，核对标量 cmap、default/non-default UVS、glyph ID 和 format 14 子表。
+- 日志报告每个来源采用和因优先级忽略的字符、UVS 数量。
 
-### 目标
+回归测试覆盖单来源 default/non-default UVS、跨来源基础字符与 UVS glyph、冲突优先级、仅贡献
+UVS 的来源，以及 hinting 内部顺序与字符优先级不一致的场景。
 
-- 扫描并保存 format 14 的 default UVS range 和 non-default UVS mapping。
-- 为 `(base codepoint, variation selector)` 建立明确的来源和冲突策略。
-- 基础字符和其 UVS 可以来自不同输入；不能仅因基础字符归属另一字体就丢弃 UVS。
-- 子集化时保留被选中的 UVS 及其所引用 glyph。
-- 输出验证同时检查标量 cmap、default UVS 和 non-default UVS。
-- 日志报告 UVS 数量、来源和冲突结果。
+## 已完成：发布产物级回归与诊断
 
-### 验收测试
-
-- 单来源 default UVS 保留。
-- 单来源 non-default UVS 保留。
-- 基础字符由高优先级字体提供、UVS glyph 由低优先级字体提供。
-- 两个输入定义相同 variation sequence 时遵守字符优先级。
-- 无关 UVS 不会因保留引用 glyph 而污染输出。
-- 保存后重新打开输出字体并再次核对 format 14。
-
-## P0：发布产物级回归与诊断
-
-- PyInstaller 构建后不能只运行 `--version`；应让产物执行一次包含 MATH、UVS 和纵排信息的
-  小型端到端合并，再重新打开并验证输出。
-- 新增 `--diagnostics`，或扩展版本输出，记录 Font_Merger、Python、fontTools、平台、架构和
-  frozen 状态；GUI 合并日志也应记录这些信息。
-- 发布构建锁定或至少记录准确的 fontTools、PyInstaller 版本，以便复现依赖相关问题。
+- PyInstaller 构建后的 Windows、Linux、macOS ARM64/x64 单文件产物不再只运行 `--version`；每个
+  产物都会执行包含 CFF2 静态化、MATH、UVS、纵排和复杂 shaping 数据的小型端到端合并，并重新
+  打开输出验证结构与语义。
+- `--diagnostics` 记录 Font_Merger、Python、fontTools、平台、架构和 frozen 状态；GUI 合并日志也
+  记录同一运行环境信息。
+- 发布构建固定 PyInstaller 版本，并把准确依赖版本写入 diagnostics artifact；失败时上传完整
+  E2E 命令与 stdout/stderr。
+- Linux 发布产物还经过 OTS 与 HarfBuzz corpus 验证。v2.4.0 发布前已通过四个平台的手动发布构建。
 
 ## P1：显式的表处理策略和 QA
 
@@ -132,11 +124,11 @@ UPM 和转换后 VORG 移除。该测试在修复前可稳定观察到 vertical 
 - **保持 Variable Font 输出**：任意 VF union 涉及 axis mapping、masters compatibility 和多个
   VariationStore，远超当前静态化合并的产品边界。
 
-## 建议实施顺序
+## 已完成的实施顺序
 
-1. UVS/cmap 14 全流程支持和回归测试。
-2. 发布版可执行文件的真实合并测试与依赖诊断。
-3. 表处理摘要、warning 策略、完整 decompile 验证。
+1. 已完成：UVS/cmap 14 全流程支持和回归测试。
+2. 已完成：发布版可执行文件的真实合并测试与依赖诊断。
+3. 已完成：表处理摘要、warning 策略、完整 decompile 验证。
 4. 已完成：OTS + HarfBuzz corpus CI。
 5. 已完成：MATH 多来源/不同 UPM。
 6. 已完成：纵排/VORG→glyf/vmtx 语义回归与修复。

@@ -37,7 +37,7 @@ from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 from fontTools.ttLib.scaleUpem import scale_upem
 from fontTools.varLib.instancer import instantiateVariableFont
 
-VERSION = "2.3.8"
+VERSION = "2.4.0"
 LOG = logging.getLogger("font-merger")
 
 COLLECTION_MAGIC = b"ttcf"
