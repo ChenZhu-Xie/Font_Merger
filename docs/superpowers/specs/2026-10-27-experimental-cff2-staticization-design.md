@@ -15,7 +15,9 @@ static CFF font before the existing CFF-to-glyf conversion and merge pipeline.
 - On upstream failure, report the source, selected coordinates, fontTools
   version, and original exception; never silently select another instance.
 - Cover default/custom locations with a generated CFF2 VF, and exercise an
-  Adobe CFF2 VF in CI before describing the feature as non-experimental.
+  Adobe CFF2 VF in CI while retaining the experimental boundary. Promotion to
+  non-experimental support additionally requires a broader representative
+  corpus and resolution or containment of known upstream instancing failures.
 
 ## Non-goals
 

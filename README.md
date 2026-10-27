@@ -30,9 +30,9 @@
 
 ## 目录 / Contents / 目錄
 
-- **[简体中文](#zh-cn)**：[项目简介](#zh-cn-intro) · [功能亮点](#zh-cn-features) · [使用方法](#zh-cn-usage) · [下载](#zh-cn-download) · [GUI](#zh-cn-gui) · [命令行](#zh-cn-cli) · [微软雅黑](#zh-cn-yahei) · [Hinting](#zh-cn-hinting) · [多字重](#zh-cn-weights) · [安装与使用](#zh-cn-install) · [开发者](#zh-cn-dev) · [许可证](#zh-cn-license)
-- **[English](#en)**: [Overview](#en-intro) · [Highlights](#en-features) · [Usage](#en-usage) · [Download](#en-download) · [GUI](#en-gui) · [CLI](#en-cli) · [Microsoft YaHei](#en-yahei) · [Hinting](#en-hinting) · [Multiple weights](#en-weights) · [Install and use](#en-install) · [Developers](#en-dev) · [License](#en-license)
-- **[繁體中文](#zh-tw)**：[專案簡介](#zh-tw-intro) · [功能亮點](#zh-tw-features) · [使用方式](#zh-tw-usage) · [下載](#zh-tw-download) · [GUI](#zh-tw-gui) · [命令列](#zh-tw-cli) · [微軟雅黑](#zh-tw-yahei) · [Hinting](#zh-tw-hinting) · [多字重](#zh-tw-weights) · [安裝與使用](#zh-tw-install) · [開發者](#zh-tw-dev) · [授權](#zh-tw-license)
+- **[简体中文](#zh-cn)**：[项目简介](#zh-cn-intro) · [功能亮点](#zh-cn-features) · [v2.4.0 更新](#zh-cn-v240) · [使用方法](#zh-cn-usage) · [下载](#zh-cn-download) · [GUI](#zh-cn-gui) · [命令行](#zh-cn-cli) · [微软雅黑](#zh-cn-yahei) · [Hinting](#zh-cn-hinting) · [多字重](#zh-cn-weights) · [安装与使用](#zh-cn-install) · [开发者](#zh-cn-dev) · [许可证](#zh-cn-license)
+- **[English](#en)**: [Overview](#en-intro) · [Highlights](#en-features) · [What's new in v2.4.0](#en-v240) · [Usage](#en-usage) · [Download](#en-download) · [GUI](#en-gui) · [CLI](#en-cli) · [Microsoft YaHei](#en-yahei) · [Hinting](#en-hinting) · [Multiple weights](#en-weights) · [Install and use](#en-install) · [Developers](#en-dev) · [License](#en-license)
+- **[繁體中文](#zh-tw)**：[專案簡介](#zh-tw-intro) · [功能亮點](#zh-tw-features) · [v2.4.0 更新](#zh-tw-v240) · [使用方式](#zh-tw-usage) · [下載](#zh-tw-download) · [GUI](#zh-tw-gui) · [命令列](#zh-tw-cli) · [微軟雅黑](#zh-tw-yahei) · [Hinting](#zh-tw-hinting) · [多字重](#zh-tw-weights) · [安裝與使用](#zh-tw-install) · [開發者](#zh-tw-dev) · [授權](#zh-tw-license)
 
 ---
 
@@ -63,6 +63,18 @@
 2. **多字重支持**：可生成 Regular、Medium、Bold、Italic 等不同字重和样式的字体。
 3. **字体集合支持**：可以直接选择 TTC/OTC 中的字体，例如微软雅黑。
 4. **开箱即用**：下载程序即可合并，生成的字体可直接安装使用。
+
+<a id="zh-cn-v240"></a>
+
+### v2.4.0 更新
+
+- 完整保留 Unicode Variation Sequences（`cmap` format 14），包括 default 和 non-default UVS，以及跨字体来源的基础字符与变体字形。
+- 修复多个 MATH 来源、不同 UPM 和字体级常量冲突；CFF 转换为 `glyf` 时会把 `VORG` 的纵排原点语义写入 TrueType vertical metrics。
+- 高级 OpenType 表使用显式策略：CLI/API 可选择默认的 `warn` 或更严格的 `strict`；彩色、AAT 和 Graphite 等当前不能安全重写的表始终拒绝。
+- 发布版可执行文件会执行真实合并回归；Linux CI 还使用 OTS 和 HarfBuzz 检查结构、UVS 与复杂 shaping。
+- CFF2 可变字体可通过 CLI/API 显式启用实验性静态化，但 GUI 尚未提供该开关。输出仍是静态 TrueType `glyf` 字体；彩色字体、可变字体输出和真正的 CFF/PostScript 轮廓输出不在当前支持范围。
+
+完整版本记录见 [CHANGELOG.md](CHANGELOG.md)，已验证范围与后续方向见 [项目路线图](docs/roadmap.md)。
 
 <a id="zh-cn-usage"></a>
 
@@ -229,7 +241,10 @@ GUI 使用 Python 标准库 Tkinter / ttk，字体处理使用 fontTools，并�
 Windows 本地构建与测试：
 
 ```powershell
-python -m pip install -e ".[build]"
+python -m pip install -e ".[build,lint]"
+python -m unittest discover -s tests -v
+python -m ruff check .
+python scripts/release_e2e.py --source-script Font_Merger.py --work-dir build/source-e2e
 .\build-windows.ps1
 .\run-gui-debug.ps1
 .\run-gui-release.ps1
@@ -237,9 +252,11 @@ python -m pip install -e ".[build]"
 
 Release 单文件输出到 `dist/local-release`；带控制台与 PyInstaller 调试信息的 onedir GUI 输出到 `dist/local-debug`。启动脚本可加 `-Build` 强制重新构建。
 
+Linux CI 会在上述 source E2E 输出上继续运行 `scripts/font_qa.py`，这一步需要系统提供 `ots-sanitize` 和 `hb-shape`，它们不是最终用户的运行依赖。
+
 字体合并不会改变源字体许可证。分享合并后的字体前，请确认所有源字体都允许这样使用。
 
-同类工具调研与技术说明见 [docs/research.md](docs/research.md)。
+版本变化见 [CHANGELOG.md](CHANGELOG.md)；当前能力与后续方向见 [docs/roadmap.md](docs/roadmap.md)；历史同类工具调研见 [docs/research.md](docs/research.md)。
 
 <a id="zh-cn-license"></a>
 
@@ -278,6 +295,18 @@ For example, it combines the single-width Latin glyphs of Inconsolata with the d
 2. **Multiple weights**: generate Regular, Medium, Bold, Italic, and other weights or styles.
 3. **Font collections**: select a font directly from a TTC/OTC collection such as Microsoft YaHei.
 4. **Ready to use**: download, merge, and install the generated font.
+
+<a id="en-v240"></a>
+
+### What's new in v2.4.0
+
+- Unicode Variation Sequences (`cmap` format 14) are preserved end to end, including default and non-default UVS and base/variant glyphs supplied by different fonts.
+- MATH merging now handles multiple sources, differing UPM values, and font-level constant conflicts. CFF-to-`glyf` conversion carries `VORG` vertical-origin semantics into TrueType vertical metrics.
+- Advanced OpenType tables use an explicit policy: CLI/API callers can select the default `warn` mode or stricter `strict` mode. Color, AAT, Graphite, and other tables that cannot currently be rewritten safely are always rejected.
+- Packaged executables perform a real merge regression. Linux CI additionally uses OTS and HarfBuzz to validate structure, UVS, and complex shaping.
+- CFF2 variable fonts have an explicit experimental CLI/API staticization path; the GUI does not expose this switch yet. Output remains a static TrueType `glyf` font. Color-font merging, variable-font output, and true CFF/PostScript-outline output remain out of scope.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history and the [project roadmap](docs/roadmap.md) for verified scope and future work.
 
 <a id="en-usage"></a>
 
@@ -446,7 +475,10 @@ The GUI uses Python's standard Tkinter/ttk library, font processing uses fontToo
 For local Windows builds and testing:
 
 ```powershell
-python -m pip install -e ".[build]"
+python -m pip install -e ".[build,lint]"
+python -m unittest discover -s tests -v
+python -m ruff check .
+python scripts/release_e2e.py --source-script Font_Merger.py --work-dir build/source-e2e
 .\build-windows.ps1
 .\run-gui-debug.ps1
 .\run-gui-release.ps1
@@ -454,9 +486,11 @@ python -m pip install -e ".[build]"
 
 Release one-file executables are written to `dist/local-release`. The onedir GUI with a console and PyInstaller diagnostics is written to `dist/local-debug`. Add `-Build` to either launcher to force a rebuild.
 
+Linux CI additionally runs `scripts/font_qa.py` against the source E2E output. That step requires system-provided `ots-sanitize` and `hb-shape`; neither is a runtime dependency for end users.
+
 Merging does not change the licenses of the source fonts. Before sharing a merged font, confirm that every source font permits that use.
 
-See [docs/research.md](docs/research.md) for related-tool research and technical notes.
+See [CHANGELOG.md](CHANGELOG.md) for release history, [docs/roadmap.md](docs/roadmap.md) for current capabilities and future work, and [docs/research.md](docs/research.md) for historical related-tool research.
 
 <a id="en-license"></a>
 
@@ -495,6 +529,18 @@ See [docs/research.md](docs/research.md) for related-tool research and technical
 2. **多字重支援**：可產生 Regular、Medium、Bold、Italic 等不同字重與樣式。
 3. **字型集合支援**：可直接選擇 TTC/OTC 中的字型，例如微軟雅黑。
 4. **開箱即用**：下載程式即可合併，產生的字型可直接安裝使用。
+
+<a id="zh-tw-v240"></a>
+
+### v2.4.0 更新
+
+- 完整保留 Unicode Variation Sequences（`cmap` format 14），包括 default 與 non-default UVS，以及由不同字型提供的基礎字元與變體字形。
+- 修正多個 MATH 來源、不同 UPM 與字型層級常數衝突；CFF 轉換為 `glyf` 時會將 `VORG` 的直排原點語意寫入 TrueType vertical metrics。
+- 進階 OpenType 表採用明確策略：CLI/API 可選擇預設的 `warn` 或更嚴格的 `strict`；彩色、AAT 與 Graphite 等目前無法安全重寫的表一律拒絕。
+- Release 執行檔會執行實際合併回歸；Linux CI 另以 OTS 與 HarfBuzz 檢查結構、UVS 和複雜 shaping。
+- CFF2 可變字型可透過 CLI/API 明確啟用實驗性靜態化，但 GUI 尚未提供此開關。輸出仍是靜態 TrueType `glyf` 字型；彩色字型、可變字型輸出與真正的 CFF/PostScript 輪廓輸出不在目前支援範圍。
+
+完整版本記錄請見 [CHANGELOG.md](CHANGELOG.md)，已驗證範圍與後續方向請見 [專案路線圖](docs/roadmap.md)。
 
 <a id="zh-tw-usage"></a>
 
@@ -661,7 +707,10 @@ GUI 使用 Python 標準函式庫 Tkinter / ttk，字型處理使用 fontTools�
 Windows 本機建置與測試：
 
 ```powershell
-python -m pip install -e ".[build]"
+python -m pip install -e ".[build,lint]"
+python -m unittest discover -s tests -v
+python -m ruff check .
+python scripts/release_e2e.py --source-script Font_Merger.py --work-dir build/source-e2e
 .\build-windows.ps1
 .\run-gui-debug.ps1
 .\run-gui-release.ps1
@@ -669,9 +718,11 @@ python -m pip install -e ".[build]"
 
 Release 單一執行檔會輸出至 `dist/local-release`；含主控台與 PyInstaller 偵錯資訊的 onedir GUI 會輸出至 `dist/local-debug`。啟動腳本可加上 `-Build` 強制重新建置。
 
+Linux CI 會在上述 source E2E 輸出上繼續執行 `scripts/font_qa.py`；此步驟需要系統提供 `ots-sanitize` 與 `hb-shape`，兩者都不是一般使用者的執行階段相依套件。
+
 字型合併不會改變來源字型的授權條款。分享合併後的字型前，請確認所有來源字型都允許這種用途。
 
-同類工具研究與技術說明請見 [docs/research.md](docs/research.md)。
+版本變更請見 [CHANGELOG.md](CHANGELOG.md)；目前能力與後續方向請見 [docs/roadmap.md](docs/roadmap.md)；歷史同類工具研究請見 [docs/research.md](docs/research.md)。
 
 <a id="zh-tw-license"></a>
 

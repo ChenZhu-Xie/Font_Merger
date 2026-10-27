@@ -1,5 +1,10 @@
 # 同类项目调研（2026-09-17）
 
+> **历史快照：**本文主体记录 Font_Merger v2.2 时的调研结论，不代表当前版本的完整能力。
+> v2.4.0 已补充 UVS/cmap format 14、显式高级表策略、OTS + HarfBuzz 验证、MATH/VORG
+> 语义回归，以及可选的实验性 CFF2 静态化。当前状态见[项目路线图](roadmap.md)，版本变化见
+> [CHANGELOG](../CHANGELOG.md)。下文涉及 v2.2 的限制保留原文，作为当时决策的历史依据。
+
 后续材料：
 
 - [2026-10-23 外部横向评测原文](research/2026-10-23-font-merger-landscape.txt)

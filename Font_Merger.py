@@ -887,6 +887,17 @@ def instantiate_if_variable(
     experimental_cff2_staticize: bool = False,
     source_label: str | None = None,
 ) -> set[str]:
+    """Replace a variable font in place with one fully static instance.
+
+    Explicit ``requested_axes`` override matching named-instance coordinates;
+    all remaining axes use the instance or font default. CFF2 input requires
+    ``experimental_cff2_staticize`` and must downgrade to static CFF before it
+    can enter the normal outline-conversion pipeline.
+
+    Returns the requested axis tags that the font actually exposes. Raises
+    ``FontMergerError`` when CFF2 opt-in is missing or staticization does not
+    satisfy the required postconditions.
+    """
     if "fvar" not in font:
         return set()
     is_cff2 = "CFF2" in font
@@ -1510,6 +1521,18 @@ def merge_fonts(
     table_policy: str = "warn",
     experimental_cff2_staticize: bool = False,
 ) -> tuple[int, int]:
+    """Merge at least two font sources into one validated static font.
+
+    ``table_policy`` is ``"warn"`` to report unverified or lossy advanced
+    tables, or ``"strict"`` to reject them; tables known to be unsafe are
+    rejected in either mode. ``experimental_cff2_staticize`` opts every CFF2
+    variable input into the guarded CFF2-to-CFF-to-glyf path.
+
+    Returns ``(unicode_codepoint_count, glyph_count)`` from the reopened output.
+    Any inspection, conversion, merge, save, or validation failure raises
+    ``FontMergerError`` (or the underlying fontTools exception) without
+    replacing the requested output with a partial file.
+    """
     if len(sources) < 2:
         raise FontMergerError("至少需要两个输入字体")
     if curve_error <= 0:
@@ -1840,7 +1863,16 @@ def merge_font_family(
     table_policy: str = "warn",
     experimental_cff2_staticize: bool = False,
 ) -> list[MergeResult]:
-    """Merge one explicit style, or automatically build a static font family."""
+    """Merge one explicit style or plan and build a static font family.
+
+    ``weights`` and the matching controls determine the generated static
+    styles unless ``style``, ``instance``, or a ``wght`` axis requests one
+    explicit output. ``table_policy`` and ``experimental_cff2_staticize`` are
+    forwarded unchanged to every per-style merge.
+
+    Returns one ``MergeResult`` per generated output. Invalid planning options
+    and all per-output merge failures raise ``FontMergerError``.
+    """
     axes = dict(axes or {})
     explicit_style = style is not None or instance is not None or "wght" in axes
     if explicit_style:

@@ -1,6 +1,12 @@
 # OTS + HarfBuzz CI Validation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status:** Implemented in v2.4.0 via PR #6. This file is retained as the
+> historical implementation plan; unchecked boxes describe the original work
+> sequence rather than outstanding tasks.
+
+> **Historical execution note:** The original workflow used checkbox (`- [ ]`)
+> syntax to track implementation task by task. Do not treat these unchecked
+> boxes as current roadmap work.
 
 **Goal:** Gate merged fonts with OTS structural validation and deterministic HarfBuzz shaping assertions in both pull-request CI and the Linux packaged release build.
 

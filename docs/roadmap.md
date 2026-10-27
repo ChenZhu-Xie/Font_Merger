@@ -53,7 +53,7 @@ UVS 的来源，以及 hinting 内部顺序与字符优先级不一致的场景�
   E2E 命令与 stdout/stderr。
 - Linux 发布产物还经过 OTS 与 HarfBuzz corpus 验证。v2.4.0 发布前已通过四个平台的手动发布构建。
 
-## P1：显式的表处理策略和 QA
+## 已完成：显式的表处理策略和 QA
 
 ### 已实现：表策略
 
@@ -124,12 +124,9 @@ UPM 和转换后 VORG 移除。该测试在修复前可稳定观察到 vertical 
 - **保持 Variable Font 输出**：任意 VF union 涉及 axis mapping、masters compatibility 和多个
   VariationStore，远超当前静态化合并的产品边界。
 
-## 已完成的实施顺序
+## v2.4.0 完成范围
 
-1. 已完成：UVS/cmap 14 全流程支持和回归测试。
-2. 已完成：发布版可执行文件的真实合并测试与依赖诊断。
-3. 已完成：表处理摘要、warning 策略、完整 decompile 验证。
-4. 已完成：OTS + HarfBuzz corpus CI。
-5. 已完成：MATH 多来源/不同 UPM。
-6. 已完成：纵排/VORG→glyf/vmtx 语义回归与修复。
-7. 已完成：带显式开关、生成式回归和 Adobe corpus CI 的 experimental CFF2 静态化。
+v2.4.0 完成了 UVS/cmap 14、发布版真实合并与诊断、显式表策略、完整 decompile 验证、
+OTS + HarfBuzz corpus CI、MATH 多来源/不同 UPM、VORG→glyf/vmtx 语义保留，以及带显式开关和
+Adobe corpus CI 的实验性 CFF2 静态化。后续工作仅包括上文“后续 QA”和“暂缓项目”中明确列出的
+可选增强，不再把这些已验证路径作为待实施事项。
