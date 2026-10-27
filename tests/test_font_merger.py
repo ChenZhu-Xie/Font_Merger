@@ -7,8 +7,10 @@ from unittest.mock import Mock, patch
 
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
+from fontTools.misc.psCharStrings import T2CharString
 from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont, newTable
@@ -26,6 +28,7 @@ from Font_Merger import (
     assess_table_policy,
     collection_faces,
     configure_standard_streams,
+    instantiate_if_variable,
     legacy_names,
     merge_font_family,
     merge_fonts,
@@ -210,6 +213,80 @@ class FontMergerTests(TestCase):
         builder.font.close()
 
     @staticmethod
+    def _write_cff2_variable_font(path):
+        glyph_order = [".notdef", "variable"]
+        builder = FontBuilder(1000, isTTF=False)
+        builder.setupGlyphOrder(glyph_order)
+        builder.setupCharacterMap({0x2603: "variable"})
+        builder.setupNameTable(
+            {
+                "familyName": "CFF2 Variable",
+                "styleName": "Regular",
+                "uniqueFontIdentifier": "CFF2Variable-Regular",
+                "fullName": "CFF2 Variable Regular",
+                "psName": "CFF2Variable-Regular",
+            }
+        )
+        builder.setupFvar(
+            [("wght", 100, 400, 900, "Weight")],
+            [
+                {"location": {"wght": 400}, "stylename": "Regular"},
+                {"location": {"wght": 900}, "stylename": "Black"},
+            ],
+        )
+
+        empty_pen = T2CharStringPen(None, None, CFF2=True)
+        empty = empty_pen.getCharString()
+        variable = T2CharString(
+            program=[
+                200,
+                100,
+                -100,
+                0,
+                2,
+                "blend",
+                "rmoveto",
+                400,
+                200,
+                1,
+                "blend",
+                "hlineto",
+                500,
+                0,
+                1,
+                "blend",
+                "vlineto",
+                -400,
+                -200,
+                1,
+                "blend",
+                "hlineto",
+            ]
+        )
+        builder.setupCFF2(
+            {".notdef": empty, "variable": variable},
+            regions=[{"wght": (0, 1, 1)}],
+        )
+        builder.setupHorizontalMetrics({name: (1000, 0) for name in glyph_order})
+        builder.setupHorizontalHeader(ascent=800, descent=-200)
+        builder.setupOS2(
+            sTypoAscender=800,
+            sTypoDescender=-200,
+            usWinAscent=800,
+            usWinDescent=200,
+        )
+        builder.setupPost()
+        builder.font.save(path)
+        builder.font.close()
+
+    @staticmethod
+    def _glyph_bounds(font, glyph_name):
+        glyph_set = font.getGlyphSet()
+        pen = BoundsPen(glyph_set)
+        glyph_set[glyph_name].draw(pen)
+        return pen.bounds
+
+    @staticmethod
     def _single_substitution(font, feature_tag, glyph_name):
         feature_list = font["GSUB"].table.FeatureList.FeatureRecord
         lookup_list = font["GSUB"].table.LookupList.Lookup
@@ -362,6 +439,81 @@ class FontMergerTests(TestCase):
         self.assertEqual(axes[0].maximum, 900)
         self.assertEqual(instances[0].name, "Regular")
         self.assertEqual(instances[0].coordinate_map, {"wght": 400})
+
+    def test_cff2_variable_font_requires_experimental_opt_in(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cff2-vf.otf"
+            self._write_cff2_variable_font(path)
+            with TTFont(path) as font:
+                with self.assertRaisesRegex(FontMergerError, "实验"):
+                    instantiate_if_variable(font, {})
+
+    def test_cff2_variable_font_staticizes_default_and_custom_locations(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cff2-vf.otf"
+            self._write_cff2_variable_font(path)
+
+            observed = {}
+            for location, expected_bounds in (
+                ({}, (200, 100, 600, 600)),
+                ({"wght": 900}, (100, 100, 700, 600)),
+            ):
+                with self.subTest(location=location), TTFont(path) as font:
+                    used = instantiate_if_variable(
+                        font,
+                        location,
+                        {"wght": 400},
+                        experimental_cff2_staticize=True,
+                        source_label="generated-cff2.otf",
+                    )
+                    self.assertEqual(used, set(location))
+                    self.assertNotIn("CFF2", font)
+                    self.assertNotIn("fvar", font)
+                    self.assertIn("CFF ", font)
+                    observed[tuple(location.items())] = self._glyph_bounds(
+                        font, "variable"
+                    )
+                    self.assertEqual(
+                        observed[tuple(location.items())], expected_bounds
+                    )
+            self.assertNotEqual(observed[()], observed[(("wght", 900),)])
+
+    def test_cff2_staticization_rejects_an_incomplete_downgrade(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cff2-vf.otf"
+            self._write_cff2_variable_font(path)
+            with TTFont(path) as font, patch(
+                "Font_Merger.instantiateVariableFont", return_value=font
+            ):
+                with self.assertRaisesRegex(
+                    FontMergerError, "generated-cff2.otf.*仍含 CFF2"
+                ):
+                    instantiate_if_variable(
+                        font,
+                        {"wght": 900},
+                        experimental_cff2_staticize=True,
+                        source_label="generated-cff2.otf",
+                    )
+
+    def test_cff2_staticization_wraps_upstream_failure_with_diagnostics(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "cff2-vf.otf"
+            self._write_cff2_variable_font(path)
+            with TTFont(path) as font, patch(
+                "Font_Merger.instantiateVariableFont",
+                side_effect=IndexError("bad VarStore"),
+            ):
+                with self.assertRaisesRegex(
+                    FontMergerError,
+                    r"generated-cff2\.otf.*wght=900.*fontTools [0-9.]+.*"
+                    r"IndexError: bad VarStore",
+                ):
+                    instantiate_if_variable(
+                        font,
+                        {"wght": 900},
+                        experimental_cff2_staticize=True,
+                        source_label="generated-cff2.otf",
+                    )
 
     def test_list_labels_a_standalone_font_as_font_not_face_zero(self):
         output = StringIO()

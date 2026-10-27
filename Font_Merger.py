@@ -884,12 +884,16 @@ def instantiate_if_variable(
     font: TTFont,
     requested_axes: dict[str, float],
     instance_coordinates: dict[str, float] | None = None,
+    experimental_cff2_staticize: bool = False,
+    source_label: str | None = None,
 ) -> set[str]:
     if "fvar" not in font:
         return set()
-    if "CFF2" in font:
+    is_cff2 = "CFF2" in font
+    if is_cff2 and not experimental_cff2_staticize:
         raise FontMergerError(
-            "当前 fontTools 不能可靠地静态化 CFF2 可变字体；请先导出静态实例"
+            "CFF2 可变字体静态化仍为实验功能；请先导出静态实例，或显式使用 "
+            "--experimental-cff2-staticize"
         )
 
     available = {axis.axisTag: axis for axis in font["fvar"].axes}
@@ -899,11 +903,40 @@ def instantiate_if_variable(
         tag: requested_axes.get(tag, instance_coordinates.get(tag, axis.defaultValue))
         for tag, axis in available.items()
     }
-    LOG.info(
-        "静态化可变字体：%s",
-        ", ".join(f"{tag}={limits[tag]:g}" for tag in sorted(limits)),
+    coordinates = ", ".join(
+        f"{tag}={limits[tag]:g}" for tag in sorted(limits)
     )
-    instantiateVariableFont(font, limits, inplace=True, optimize=True)
+    LOG.info("静态化可变字体：%s", coordinates)
+    if is_cff2:
+        LOG.warning("启用实验性 CFF2 静态化：%s", source_label or "CFF2 输入")
+        try:
+            instantiateVariableFont(
+                font,
+                limits,
+                inplace=True,
+                optimize=True,
+                downgradeCFF2=True,
+                static=True,
+            )
+        except Exception as exc:
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化失败"
+                f"（{coordinates}; fontTools {fontTools.__version__}）："
+                f"{type(exc).__name__}: {exc}"
+            ) from exc
+        if "CFF2" in font:
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化后仍含 CFF2"
+                f"（{coordinates}; fontTools {fontTools.__version__}）"
+            )
+        if "fvar" in font or "CFF " not in font:
+            remaining = "fvar" if "fvar" in font else "未生成 CFF"
+            raise FontMergerError(
+                f"{source_label or 'CFF2 输入'} 实验性 CFF2 静态化不完整："
+                f"{remaining}（{coordinates}; fontTools {fontTools.__version__}）"
+            )
+    else:
+        instantiateVariableFont(font, limits, inplace=True, optimize=True)
     return used
 
 
