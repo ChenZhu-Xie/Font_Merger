@@ -5,9 +5,11 @@ from tempfile import TemporaryDirectory
 from unittest import TestCase
 from unittest.mock import Mock, patch
 
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.fontBuilder import FontBuilder
 from fontTools.misc.roundTools import otRound
 from fontTools.otlLib.builder import buildMathTable
+from fontTools.pens.t2CharStringPen import T2CharStringPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont, newTable
 from fontTools.ttLib.tables._f_v_a_r import Axis, NamedInstance
@@ -137,6 +139,89 @@ class FontMergerTests(TestCase):
         builder.font.save(path)
         builder.font.close()
 
+    @staticmethod
+    def _write_cff_vorg_font(path):
+        glyph_order = [".notdef", "han", "han.vert"]
+        widths = {name: 1000 for name in glyph_order}
+        heights = {".notdef": 500, "han": 700, "han.vert": 600}
+        charstrings = {}
+        for name in glyph_order:
+            pen = T2CharStringPen(widths[name], None)
+            pen.moveTo((100, 0))
+            pen.lineTo((900, 0))
+            pen.lineTo((900, heights[name]))
+            pen.lineTo((100, heights[name]))
+            pen.closePath()
+            charstrings[name] = pen.getCharString()
+
+        builder = FontBuilder(1000, isTTF=False)
+        builder.setupGlyphOrder(glyph_order)
+        builder.setupCharacterMap({0x4E00: "han"})
+        builder.setupCFF(
+            "VerticalCFF-Regular",
+            {"FullName": "Vertical CFF Regular"},
+            charstrings,
+            {},
+        )
+        builder.setupHorizontalMetrics({name: (width, 100) for name, width in widths.items()})
+        builder.setupHorizontalHeader(ascent=800, descent=-200)
+        builder.setupVerticalMetrics(
+            {
+                ".notdef": (1000, 375),
+                # Deliberately use the bbox-derived fallback values from a
+                # less accurate CFF bbox calculation. VORG is authoritative.
+                "han": (1000, 175),
+                "han.vert": (1000, 305),
+            }
+        )
+        builder.setupVerticalHeader(ascent=500, descent=-500)
+        builder.setupNameTable(
+            {
+                "familyName": "Vertical CFF",
+                "styleName": "Regular",
+                "uniqueFontIdentifier": "VerticalCFF-Regular",
+                "fullName": "Vertical CFF Regular",
+                "psName": "VerticalCFF-Regular",
+            }
+        )
+        builder.setupOS2(
+            sTypoAscender=800,
+            sTypoDescender=-200,
+            usWinAscent=800,
+            usWinDescent=200,
+        )
+        builder.setupPost()
+        vorg = newTable("VORG")
+        vorg.majorVersion = 1
+        vorg.minorVersion = 0
+        vorg.defaultVertOriginY = 880
+        vorg.VOriginRecords = {"han.vert": 910}
+        builder.font["VORG"] = vorg
+        addOpenTypeFeaturesFromString(
+            builder.font,
+            """
+            languagesystem DFLT dflt;
+            languagesystem hani dflt;
+            feature vert { sub han by han.vert; } vert;
+            feature vrt2 { sub han by han.vert; } vrt2;
+            """,
+        )
+        builder.font.save(path)
+        builder.font.close()
+
+    @staticmethod
+    def _single_substitution(font, feature_tag, glyph_name):
+        feature_list = font["GSUB"].table.FeatureList.FeatureRecord
+        lookup_list = font["GSUB"].table.LookupList.Lookup
+        for feature_record in feature_list:
+            if feature_record.FeatureTag != feature_tag:
+                continue
+            for lookup_index in feature_record.Feature.LookupListIndex:
+                for subtable in lookup_list[lookup_index].SubTable:
+                    if glyph_name in subtable.mapping:
+                        return subtable.mapping[glyph_name]
+        raise AssertionError(f"missing {feature_tag} substitution for {glyph_name}")
+
     def test_table_policy_always_rejects_unsafe_layout_technologies(self):
         font = TTFont()
         font["morx"] = newTable("morx")
@@ -163,13 +248,13 @@ class FontMergerTests(TestCase):
     def test_table_policy_summary_records_every_disposition(self):
         summary = summarize_table_policy(
             [
-                {"BASE", "GSUB", "STAT", "cmap"},
+                {"BASE", "GSUB", "STAT", "VORG", "cmap"},
                 {"GSUB", "cmap"},
             ],
             {"BASE", "GSUB", "cmap", "name"},
         )
         self.assertEqual(summary["merged"], ("GSUB",))
-        self.assertEqual(summary["rebuilt"], ("cmap", "name"))
+        self.assertEqual(summary["rebuilt"], ("VORG", "cmap", "name"))
         self.assertEqual(summary["dropped"], ("STAT",))
         self.assertEqual(summary["unverified"], ("BASE",))
 
@@ -648,6 +733,55 @@ class FontMergerTests(TestCase):
                     ],
                     [2048, 3072],
                 )
+
+    def test_cff_vorg_origins_survive_glyf_conversion_and_upm_scaling(self):
+        with TemporaryDirectory() as directory:
+            temp = Path(directory)
+            cff_path = temp / "vertical-cff.otf"
+            companion_path = temp / "companion.ttf"
+            output = temp / "merged.ttf"
+            self._write_cff_vorg_font(cff_path)
+            self._write_math_font(
+                companion_path,
+                family="UPM 2048 Companion",
+                upm=2048,
+                codepoint=0x0041,
+                glyph_name="latin",
+                axis_height=512,
+                top_accent=600,
+                min_connector_overlap=100,
+            )
+
+            merge_fonts(
+                [FontSource(cff_path), FontSource(companion_path)],
+                output,
+                priority="input",
+                hinting_source="2",
+            )
+
+            with TTFont(output) as merged:
+                self.assertEqual(merged["head"].unitsPerEm, 2048)
+                self.assertIn("glyf", merged)
+                self.assertNotIn("CFF ", merged)
+                self.assertNotIn("VORG", merged)
+
+                base = merged.getBestCmap()[0x4E00]
+                vertical = self._single_substitution(merged, "vert", base)
+                self.assertEqual(
+                    self._single_substitution(merged, "vrt2", base), vertical
+                )
+                glyf = merged["glyf"]
+                origins = {}
+                for glyph_name in (base, vertical):
+                    glyph = glyf[glyph_name]
+                    glyph.recalcBounds(glyf)
+                    origins[glyph_name] = (
+                        glyph.yMax + merged["vmtx"][glyph_name][1]
+                    )
+                    self.assertEqual(merged["vmtx"][glyph_name][0], 2048)
+
+                self.assertEqual(origins[base], otRound(880 * 2048 / 1000))
+                self.assertEqual(origins[vertical], otRound(910 * 2048 / 1000))
 
     def test_uvs_only_source_contributes_default_and_non_default_sequences(self):
         with TemporaryDirectory() as directory:
