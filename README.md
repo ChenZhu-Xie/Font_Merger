@@ -100,6 +100,8 @@
 
 下载图形界面压缩包，解压后双击 `font-merger-gui-windows-x64.exe`。添加字体、选择输出位置，再点击“开始合并”即可。界面支持简体中文、繁體中文和 English。若 Windows 文件选择器不显示 `C:\Windows\Fonts`，可点击与“添加字体”并列的“系统字体…”，按家族名、样式或文件名搜索系统级和当前用户安装的字体，并用 Ctrl / Shift 多选；TTC / OTC 会直接列出其中的各个字体。
 
+合并失败，或合并成功但生成字体的显示、字重、字符来源等不符合预期时，可点击“报告问题”。程序会打开 GitHub 新 Issue 页面，并预填脱敏后的输入文件名、合并设置、输出摘要、运行环境和错误详情；不会自动提交、上传字体、附带完整本机路径或运行日志。请提交前检查草稿，并补充预期行为、实际行为、使用软件和最小示例；只有在源字体许可证允许时才分享字体文件。若浏览器无法打开，预填链接会复制到剪贴板。
+
 默认设置适合大多数用户：当且仅当两个输入能被可靠识别为一款西文字体和一款 CJK 字体时，程序让西文字体覆盖英文等重复字符、由 CJK 字体补充其余字符，并以 CJK 字体的 UPM 和 Hinting 作为显示基准；此时两款字体的添加顺序不影响结果。其他组合（包括三个以上输入）默认按字体列表顺序决定字符优先级和显示基准。
 
 字重默认使用 `auto + nearest`：只要存在静态字体，优先级最高的静态字体就作为字重基准，可变字体在可能时实例化到相同字重。例如静态西文字体为 350、CJK 可变字体支持 `wght=100..900` 时，会生成双方均为 350 的静态输出。全部输入都是可变字体时，程序以可用字重锚点较丰富的字体为基准，优先生成所有输入都能精确实现的字重。最近字重匹配默认不限制最大差值；需要严格匹配时可在高级设置中选择“必须精确匹配”或填写最大字重差。
@@ -331,6 +333,8 @@ Releases also include `SHA256SUMS.txt` for verifying downloaded files with SHA-2
 #### GUI (recommended on Windows)
 
 Download and extract the GUI archive, then double-click `font-merger-gui-windows-x64.exe`. Add fonts, choose an output path, and click “Merge fonts.” The interface supports Simplified Chinese, Traditional Chinese, and English. If the Windows file picker does not show `C:\Windows\Fonts`, use “System fonts…” beside “Add fonts” to search system-wide and per-user fonts by family, style, or file name and select multiple entries with Ctrl / Shift. Each face in a TTC / OTC collection is listed directly.
+
+If a merge fails, or completes but the generated font has unexpected rendering, weights, or character sources, choose “Report issue.” The GUI opens a new GitHub Issue with privacy-safe input file names, merge settings, output summaries, runtime diagnostics, and error details prefilled. It does not submit the Issue, upload fonts, or include full local paths or the activity log. Review the draft and add the expected and actual behavior, affected application, and a minimal sample; share font files only when their licenses permit redistribution. If the browser cannot be opened, the prefilled link is copied to the clipboard.
 
 The defaults suit most users. If and only if two inputs can be identified reliably as one Latin and one CJK font, the Latin font supplies overlapping characters, the CJK font supplies the rest, and the CJK font provides the UPM and hinting baseline. Input order does not matter for that detected pair. Other combinations, including three or more inputs, use font-list order for glyph priority and the display baseline.
 
@@ -565,6 +569,8 @@ Release 頁面也會提供 `SHA256SUMS.txt`，可用來驗證下載檔案的 SHA
 #### GUI（Windows 推薦）
 
 下載圖形介面壓縮檔，解壓縮後按兩下 `font-merger-gui-windows-x64.exe`。加入字型、選擇輸出位置，再按一下「開始合併字型」即可。介面支援簡體中文、繁體中文與 English。若 Windows 檔案選擇器未顯示 `C:\Windows\Fonts`，可按一下與「加入字型」並列的「系統字型…」，依家族名稱、樣式或檔名搜尋系統層級和目前使用者安裝的字型，並用 Ctrl / Shift 多選；TTC / OTC 會直接列出其中各個字型。
+
+合併失敗，或合併成功但產生字型的顯示、字重、字元來源等不符合預期時，可按一下「回報問題」。程式會開啟 GitHub 新 Issue 頁面，並預先填入去識別化的輸入檔名、合併設定、輸出摘要、執行環境與錯誤詳情；不會自動送出、上傳字型、附帶完整本機路徑或執行記錄。送出前請檢查草稿，並補充預期行為、實際行為、使用軟體與最小範例；只有在來源字型授權允許時才分享字型檔案。若無法開啟瀏覽器，預填連結會複製到剪貼簿。
 
 預設設定適合大多數使用者：僅當兩個輸入能可靠辨識為一款西文字型與一款 CJK 字型時，程式才會讓西文字型提供英文等重複字元、由 CJK 字型補充其餘字元，並以 CJK 字型的 UPM 與 Hinting 作為顯示基準；此時兩款字型的加入順序不影響結果。其他組合（包括三個以上輸入）預設依字型清單順序決定字元優先順序與顯示基準。
 

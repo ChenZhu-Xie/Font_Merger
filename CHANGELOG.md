@@ -3,6 +3,22 @@
 This file records user-visible changes to Font_Merger. GitHub release assets and
 checksums remain available from the [Releases page](https://github.com/ChenZhu-Xie/Font_Merger/releases).
 
+## Unreleased
+
+### Added
+
+- Add a GUI “Report issue” action after both successful and failed merges. It
+  opens a reviewable GitHub Issue draft prefilled with privacy-safe source file
+  names, merge settings, output summaries, runtime diagnostics, and sanitized
+  error details. It never submits or uploads font files automatically, omits
+  full local paths and activity logs, and copies the draft URL to the clipboard
+  only when the browser cannot be opened.
+
+### Fixed
+
+- Preserve the actionable core exception details in Traditional Chinese and
+  English GUI error dialogs instead of replacing them with a generic message.
+
 ## [2.4.0] - 2026-10-27
 
 ### Added

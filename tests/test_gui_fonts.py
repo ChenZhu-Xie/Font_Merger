@@ -3,10 +3,11 @@ from tempfile import TemporaryDirectory
 import tkinter as tk
 from unittest import TestCase, skipUnless
 from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlparse
 
 from fontTools.ttLib import TTFont
 
-from Font_Merger import FontSource
+from Font_Merger import FontMergerError, FontSource, MergeResult
 from Font_Merger_GUI import (
     COMBOBOX_LIST_BACKGROUND,
     COMBOBOX_LIST_FOREGROUND,
@@ -21,6 +22,7 @@ from Font_Merger_GUI import (
     PALETTES,
     SUCCESS,
     TEXT,
+    build_issue_report_url,
     configure_gui_font,
     filter_installed_font_faces,
     gui_font_candidates,
@@ -57,6 +59,11 @@ class GUIFontTests(TestCase):
 
     def test_default_locale_is_simplified_chinese(self):
         self.assertEqual(DEFAULT_LOCALE, "zh_CN")
+
+    def test_every_locale_exposes_the_same_gui_text_keys(self):
+        expected = set(TEXT[DEFAULT_LOCALE])
+        for locale, translations in TEXT.items():
+            self.assertEqual(set(translations), expected, locale)
 
     def test_simplified_chinese_text_does_not_mix_traditional_wording(self):
         traditional_only = set("選擇型檔併產進階顯設個與軸錯誤讀處順語")
@@ -175,6 +182,80 @@ class GUIFontTests(TestCase):
         self.assertTrue(is_single_weight_request("", "", "Bold"))
         self.assertFalse(is_single_weight_request("", "wdth=90,slnt=-10"))
         self.assertFalse(is_single_weight_request("", ""))
+
+    def test_issue_report_prefills_reproduction_without_full_local_paths(self):
+        first = FontSource(
+            Path("C:/Users/Alice/Private Fonts/Latin.ttf"), 2, True
+        )
+        second = FontSource(Path("D:/客户项目/CJK.otf"))
+        collection = FontSource(Path("D:/Fonts/Collection.ttc"))
+        output = Path("C:/Users/Alice/Desktop/Client Merge.ttf")
+        result = MergeResult(output, "Medium", 500, 12345, 13000)
+
+        url = build_issue_report_url(
+            sources=[first, second, collection],
+            output=output,
+            settings={
+                "family": "Example Family",
+                "priority": "2,1",
+                "hinting_source": "2",
+                "instance": None,
+                "weights": "500",
+                "weight_match": "exact",
+                "max_weight_gap": 0,
+                "axes": {"wght": 500.0},
+                "style": "Medium",
+            },
+            results=[result],
+        )
+
+        query = parse_qs(urlparse(url).query)
+        body = query["body"][0]
+        self.assertIn("Latin.ttf#2", body)
+        self.assertIn("CJK.otf", body)
+        self.assertIn("Collection.ttc#0", body)
+        self.assertIn("Client Merge.ttf", body)
+        self.assertIn("`family`: `Example Family`", body)
+        self.assertIn("characters=12345", body)
+        self.assertIn("font_merger=", body)
+        self.assertIn("## Expected behavior", body)
+        self.assertNotIn("C:/Users/Alice", body)
+        self.assertNotIn("D:/客户项目", body)
+
+    def test_issue_report_redacts_known_paths_from_failure_details(self):
+        source = FontSource(Path("C:/Users/Alice/Secret/Source.ttf"))
+        output = Path("C:/Users/Alice/Desktop/Merged.ttf")
+        error = FontMergerError(f"failed while reading {source.path}")
+
+        url = build_issue_report_url(
+            sources=[source],
+            output=output,
+            settings={},
+            error=error,
+        )
+
+        body = parse_qs(urlparse(url).query)["body"][0]
+        self.assertIn("FontMergerError: failed while reading Source.ttf", body)
+        self.assertNotIn("C:\\Users\\Alice", body)
+
+    def test_report_issue_opens_the_prepared_draft(self):
+        gui = Mock(last_issue_url="https://example.invalid/issue")
+        with patch("Font_Merger_GUI.webbrowser.open", return_value=True) as opened:
+            FontMergerGUI.report_issue(gui)
+        opened.assert_called_once_with(gui.last_issue_url, new=2)
+        gui.t.assert_not_called()
+
+    def test_report_issue_copies_the_draft_url_when_browser_open_fails(self):
+        gui = Mock(last_issue_url="https://example.invalid/issue")
+        gui.t.side_effect = lambda key: key
+        with patch("Font_Merger_GUI.webbrowser.open", return_value=False), patch(
+            "Font_Merger_GUI.messagebox.showerror"
+        ) as showerror:
+            FontMergerGUI.report_issue(gui)
+
+        gui.root.clipboard_clear.assert_called_once_with()
+        gui.root.clipboard_append.assert_called_once_with(gui.last_issue_url)
+        showerror.assert_called_once()
 
     def test_installed_font_files_filters_and_sorts_supported_files(self):
         with TemporaryDirectory() as directory:
