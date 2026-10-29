@@ -45,7 +45,9 @@ checksums remain available from the [Releases page](https://github.com/ChenZhu-X
 ### Compatibility and limits
 
 - Python 3.10 uses `fontTools>=4.65.0,<4.66`; Python 3.11 and newer use
-  `fontTools>=4.67.0`.
+  `fontTools>=4.67.0,<4.68`. Version 4.68.0 is temporarily excluded because it
+  regresses staticization of the pinned Adobe CFF2 corpus; the upper bound can
+  be removed after an upstream fix is released and passes that CI gate.
 - Output remains a static font with TrueType `glyf` outlines. Variable-font
   output and true CFF/PostScript-outline output are not supported.
 - Color-font merging remains unsupported. CFF2 staticization is opt-in because
