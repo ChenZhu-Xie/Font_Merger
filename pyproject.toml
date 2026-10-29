@@ -12,7 +12,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "ChenZhu-Xie" }]
 dependencies = [
     'fonttools>=4.65.0,<4.66; python_version < "3.11"',
-    'fonttools>=4.67.0; python_version >= "3.11"',
+    'fonttools>=4.67.0,<4.68; python_version >= "3.11"',
 ]
 
 [project.scripts]
